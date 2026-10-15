@@ -92,6 +92,12 @@ def test_create_provider_keeps_secret_off_argv(fake_openshell):
     assert call["env"]["GITHUB_TOKEN"] == "ghp_secretvalue"
 
 
+def test_sandbox_not_found_real_message_returns_none(fake_openshell):
+    fake_openshell.output("sandbox-get", "", exit_code=1,
+                          stderr="Error:   × code: 'Some requested entity was not found', message: \"sandbox not found\"")
+    assert osh.sandbox("x") is None
+
+
 def test_sandbox_not_found_returns_none(fake_openshell):
     fake_openshell.output("sandbox-get", "", exit_code=1, stderr='status: NotFound, message: "sandbox not found"')
     assert osh.sandbox("x") is None

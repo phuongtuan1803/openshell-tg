@@ -19,6 +19,9 @@ log = logging.getLogger(__name__)
 BINARY = os.environ.get("OPENSHELL_TG_OPENSHELL", "openshell")
 
 
+_NOT_FOUND = re.compile(r"NotFound|requested entity was not found|(?:sandbox|provider|profile) not found")
+
+
 class OpenShellError(Exception):
     def __init__(self, args: list[str], code: int, stderr: str):
         self.args_ = args
@@ -28,7 +31,8 @@ class OpenShellError(Exception):
 
     @property
     def not_found(self) -> bool:
-        return "NotFound" in self.stderr
+        # tonic prints: code: 'Some requested entity was not found', message: "sandbox not found"
+        return bool(_NOT_FOUND.search(self.stderr))
 
 
 def _env(extra: dict[str, str] | None = None) -> dict[str, str]:
