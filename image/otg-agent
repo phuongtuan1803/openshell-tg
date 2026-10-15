@@ -6,9 +6,15 @@ agent="${1:?usage: otg-agent codex|claude|opencode}"
 cd /sandbox/workspace
 
 # Personal instructions for each agent (read in addition to the project's own).
+# The copy carries a marker line; a copy with the marker is ours and is refreshed
+# on every start, a file without it was written by the user and is left alone.
 guide=/usr/share/openshell-tg/AGENTS.md
+marker='<!-- openshell-tg guide -->'
 for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/opencode/AGENTS.md"; do
-  [ -f "$target" ] || { mkdir -p "$(dirname "$target")"; cp "$guide" "$target"; }
+  if [ ! -f "$target" ] || head -1 "$target" | grep -qF "$marker"; then
+    mkdir -p "$(dirname "$target")"
+    { echo "$marker"; cat "$guide"; } > "$target"
+  fi
 done
 
 if tmux has-session -t agent 2>/dev/null; then
