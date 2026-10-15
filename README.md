@@ -62,6 +62,10 @@ idle_stop: 24h
 
 Keys and tokens are asked for once, typed hidden, and stored encrypted: API keys and GitHub tokens in OpenShell's credential store, the Telegram bot token with `systemd-creds`.
 
+## Step-by-step guide
+
+See [docs/runbook.md](docs/runbook.md).
+
 ## How it works
 
 See [docs/design.md](docs/design.md).
