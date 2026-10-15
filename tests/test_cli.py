@@ -19,6 +19,7 @@ def wired(tmp_path, monkeypatch):
     monkeypatch.setattr(sb, "state", lambda name: None)
     monkeypatch.setattr(sb, "ensure_running", lambda proj, providers, say, confirm: calls.append(f"sandbox:{providers}") or True)
     monkeypatch.setattr(sb, "attach", lambda proj: calls.append("attach") or 0)
+    monkeypatch.setattr(sb, "agent_running", lambda name: True)
     monkeypatch.setattr(cli, "prompt_secret", lambda q: "secret-value")
     return calls
 
@@ -51,3 +52,12 @@ def test_up_reports_openshell_failure_plainly(wired, tmp_path, monkeypatch, caps
     assert cli.main(["up"]) == 1
     out = capsys.readouterr().out
     assert "Stopped at: openshell sandbox create" in out and "Traceback" not in out
+
+
+def test_up_says_when_agent_exited_at_once(wired, tmp_path, monkeypatch, capsys):
+    answers = iter(["claude", "api_key", "n"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    monkeypatch.setattr(sb, "agent_running", lambda name: False)
+    assert cli.main(["up"]) == 1
+    out = capsys.readouterr().out
+    assert "is not running" in out and "openshell sandbox exec -n" in out

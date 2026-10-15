@@ -175,8 +175,11 @@ def cmd_up(args) -> int:
         say(m.t("login_hint"))
     code = sb.attach(proj)
     store.touch(proj.sandbox)
-    say(m.t("detached"))
-    return 0 if code in (0, 130) else code
+    if sb.agent_running(proj.sandbox):
+        say(m.t("detached"))
+        return 0 if code in (0, 130) else code
+    say(m.t("agent_exited", agent=proj.agent, code=code, sandbox=proj.sandbox))
+    return 1
 
 
 # other commands
