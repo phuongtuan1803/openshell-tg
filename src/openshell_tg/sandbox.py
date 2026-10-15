@@ -111,14 +111,22 @@ def create(project: Project, providers: list[str], say, confirm) -> None:
         raise SandboxError(m.t("cancelled"))
 
     say(m.t("up_creating"))
-    osh.create(
-        project.sandbox,
-        IMAGE,
-        str(project.policy) if project.policy else None,
-        providers,
-        str(project.folder),
-        WORKDIR,
-    )
+    try:
+        osh.create(
+            project.sandbox,
+            IMAGE,
+            str(project.policy) if project.policy else None,
+            providers,
+            str(project.folder),
+            WORKDIR,
+        )
+    except osh.OpenShellError:
+        # A failed create can leave a half-built sandbox that blocks the next try.
+        try:
+            osh.delete(project.sandbox)
+        except osh.OpenShellError:
+            pass
+        raise
 
     sha = None
     if is_git(project.folder):
@@ -157,7 +165,16 @@ def ensure_running(project: Project, providers: list[str], say, confirm) -> bool
         return True
     if phase != "Ready":
         say(m.t("up_starting"))
-        osh.start(project.sandbox)
+        try:
+            osh.start(project.sandbox)
+        except osh.OpenShellError:
+            if phase != "Error":
+                raise
+            if not confirm(m.t("ask_recreate_broken")):
+                raise SandboxError(m.t("cancelled")) from None
+            osh.delete(project.sandbox)
+            create(project, providers, say, confirm)
+            return True
     if osh.exec_(project.sandbox, ["test", "-f", RESTORED], timeout=30, check=False).returncode != 0:
         raise SandboxError(m.t("copy_incomplete"))
     missing = [p for p in providers if p not in osh.attached_providers(project.sandbox)]

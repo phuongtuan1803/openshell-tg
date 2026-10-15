@@ -65,3 +65,20 @@ def test_create_refuses_secret_files(repo, monkeypatch):
     with pytest.raises(sb.SandboxError, match="id_ed25519"):
         sb.create(proj, [], print, lambda q: True)
     assert not called
+
+
+def test_broken_sandbox_is_recreated_after_confirmation(monkeypatch, tmp_path):
+    from openshell_tg import osh
+    calls = []
+    proj = type("P", (), {"sandbox": "otg-x", "folder": tmp_path})()
+    monkeypatch.setattr(sb, "state", lambda name: "Error")
+    monkeypatch.setattr(sb, "_wait_while_busy", lambda name, say: "Error")
+
+    def fail_start(name):
+        raise osh.OpenShellError(["sandbox", "start"], 1, "current phase: Error")
+
+    monkeypatch.setattr(osh, "start", fail_start)
+    monkeypatch.setattr(osh, "delete", lambda name: calls.append("delete"))
+    monkeypatch.setattr(sb, "create", lambda *a, **k: calls.append("create"))
+    assert sb.ensure_running(proj, [], lambda t: None, lambda q: True) is True
+    assert calls == ["delete", "create"]
