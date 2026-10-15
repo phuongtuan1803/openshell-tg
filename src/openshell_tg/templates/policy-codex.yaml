@@ -30,8 +30,11 @@ network_policies:
       - path: /usr/bin/codex
       - path: /usr/lib/node_modules/@openai/**
 
-# To let the agent change only part of the folder, add (applies on rebuild):
-# filesystem_policy:
-#   include_workdir: false
-#   read_only: [/sandbox/workspace]
-#   read_write: [/sandbox/workspace/src/my_module, /sandbox/workspace/.git, /tmp]
+# Files the agent may read and write. Everything else is read-only or hidden.
+# The /dev entries let tmux open a terminal for the agent; keep them.
+# To let the agent change only part of the folder, set include_workdir: false and
+# list the folders under read_write (applies on rebuild).
+filesystem_policy:
+  include_workdir: true
+  read_only: [/bin, /usr, /lib, /proc, /dev/urandom, /etc, /var/log]
+  read_write: [/tmp, /dev/null, /dev/ptmx, /dev/pts, /dev/tty, /dev/zero]

@@ -88,7 +88,7 @@ def test_missing_marker_reruns_restore_instead_of_failing(monkeypatch, tmp_path)
     from types import SimpleNamespace
     from openshell_tg import osh
     proj = SimpleNamespace(sandbox="otg-x", folder=tmp_path)
-    markers = iter([1, 0])  # first check: marker missing; after restore: present
+    markers = iter([1, 0, 0])  # marker missing; present after restore; terminal probe ok
     restored = []
     monkeypatch.setattr(sb, "_wait_while_busy", lambda name, say: "Ready")
     monkeypatch.setattr(sb, "_restore", lambda p: restored.append(1))
@@ -96,3 +96,25 @@ def test_missing_marker_reruns_restore_instead_of_failing(monkeypatch, tmp_path)
     monkeypatch.setattr(osh, "attached_providers", lambda name: set())
     assert sb.ensure_running(proj, [], lambda t: None, lambda q: True) is False
     assert restored == [1]
+
+
+def test_blocked_terminal_is_explained_before_attach(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openshell_tg import osh
+    import pytest
+    proj = SimpleNamespace(sandbox="otg-x", folder=tmp_path, policy=tmp_path / "openshell" / "policy.yaml")
+    monkeypatch.setattr(sb, "_wait_while_busy", lambda name, say: "Ready")
+    results = iter([0, 1])  # marker present; tmux probe fails
+    monkeypatch.setattr(osh, "exec_", lambda *a, **k: SimpleNamespace(returncode=next(results)))
+    with pytest.raises(sb.SandboxError) as err:
+        sb.ensure_running(proj, [], lambda t: None, lambda q: True)
+    assert "/dev/ptmx" in str(err.value) and "policy.yaml" in str(err.value)
+
+
+def test_policy_templates_allow_terminal_devices():
+    import yaml
+    from pathlib import Path
+    import openshell_tg
+    for f in (Path(openshell_tg.__file__).parent / "templates").glob("policy*.yaml"):
+        fs = yaml.safe_load(f.read_text())["filesystem_policy"]
+        assert {"/dev/ptmx", "/dev/pts"} <= set(fs["read_write"]), f.name

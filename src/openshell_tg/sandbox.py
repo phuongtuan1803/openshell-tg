@@ -186,10 +186,19 @@ def ensure_running(project: Project, providers: list[str], say, confirm) -> bool
         _restore(project)
         if osh.exec_(project.sandbox, ["test", "-f", RESTORED], timeout=30, check=False).returncode != 0:
             raise SandboxError(m.t("copy_incomplete"))
+    _check_terminal(project)
     missing = [p for p in providers if p not in osh.attached_providers(project.sandbox)]
     for provider in missing:
         osh.attach_provider(project.sandbox, provider)
     return False
+
+
+def _check_terminal(project: Project) -> None:
+    """The agent runs in tmux, which needs to open a terminal. Check before attaching."""
+    probe = osh.exec_(project.sandbox, ["sh", "-c", "tmux new-session -d -s probe 'sleep 5' && tmux kill-session -t probe"],
+                      timeout=30, check=False)
+    if probe.returncode != 0:
+        raise SandboxError(m.t("no_terminal", file=project.policy or "openshell/policy.yaml"))
 
 
 def attach(project: Project) -> int:

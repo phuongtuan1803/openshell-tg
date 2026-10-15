@@ -328,6 +328,7 @@ The CLI and the service both open the database (WAL mode). Losing it loses only 
 | Any `openshell` failure | Step that failed, `Cause:` and `Do this:` for recognised causes (below), last lines of the error, log path | Exit 1; `up` is safe to run again |
 | Image cannot be downloaded | Cause: access denied; set the package to Public | A failed create deletes the half-built sandbox |
 | Sandbox in phase Error cannot start | "Delete it and create a new one?" | Deletes only the sandbox, then creates it again |
+| Policy blocks `/dev/ptmx` or `/dev/pts` | Cause and the `filesystem_policy` block to add | `up` probes tmux before attaching; the templates include the block |
 | Unexpected exception | "Something unexpected went wrong" and the log path | Traceback goes to the log only; exit 1 |
 
 Recognised causes (`diagnose.py`, matched on the error text): image access denied, image missing, gateway not answering, timeout, disk full, no KVM access, wrong sandbox state, item not found. Anything else shows `Cause: not recognised` with the detail. The error text never contains secrets, because secrets travel in the environment and never in arguments.
