@@ -49,6 +49,7 @@ EN = {
     "missing_program": "{program} is not installed on this machine.",
     # terminal: sandbox
     "up_creating": "Creating the sandbox and copying this folder in. The first time takes a few minutes…",
+    "up_finishing": "Finishing the setup that stopped last time…",
     "up_starting": "Starting the sandbox…",
     "up_waiting": "The sandbox is {phase}. Waiting for it…",
     "secret_files": "These files would be copied into the sandbox: {files}. Add them to .gitignore, then run openshell-tg up again.",
@@ -219,6 +220,7 @@ VI = {
     "gateway_config_rejected": "OpenShell không nhận cấu hình máy ảo. {detail}",
     "missing_program": "Máy chưa cài {program}.",
     "up_creating": "Đang tạo sandbox và chép thư mục vào. Lần đầu mất vài phút…",
+    "up_finishing": "Đang hoàn tất bước cài đặt dở lần trước…",
     "up_starting": "Đang bật sandbox…",
     "up_waiting": "Sandbox đang ở trạng thái {phase}. Đang chờ…",
     "secret_files": "Các file này sẽ bị chép vào sandbox: {files}. Thêm chúng vào .gitignore rồi chạy lại openshell-tg up.",

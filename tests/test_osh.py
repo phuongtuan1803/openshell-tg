@@ -180,5 +180,5 @@ def test_attach_argv(monkeypatch):
     seen = []
     monkeypatch.setattr(osh, "interactive", lambda args: seen.append(args) or 0)
     osh.attach("sb", ["otg-agent", "codex"], "/sandbox/workspace")
-    assert seen[0] == ["sandbox", "exec", "sb", "--tty", "--timeout", "0", "--workdir", "/sandbox/workspace",
+    assert seen[0] == ["sandbox", "exec", "-n", "sb", "--tty", "--timeout", "0", "--workdir", "/sandbox/workspace",
                        "--", "otg-agent", "codex"]

@@ -128,6 +128,11 @@ def create(project: Project, providers: list[str], say, confirm) -> None:
             pass
         raise
 
+    _restore(project)
+
+
+def _restore(project: Project) -> None:
+    """Put the folder's git history into the sandbox and write the marker. Safe to repeat."""
     sha = None
     if is_git(project.folder):
         head = _git(project.folder, "rev-parse", "--verify", "-q", "HEAD", check=False)
@@ -176,7 +181,11 @@ def ensure_running(project: Project, providers: list[str], say, confirm) -> bool
             create(project, providers, say, confirm)
             return True
     if osh.exec_(project.sandbox, ["test", "-f", RESTORED], timeout=30, check=False).returncode != 0:
-        raise SandboxError(m.t("copy_incomplete"))
+        # The last create stopped before the history step; the files are already there.
+        say(m.t("up_finishing"))
+        _restore(project)
+        if osh.exec_(project.sandbox, ["test", "-f", RESTORED], timeout=30, check=False).returncode != 0:
+            raise SandboxError(m.t("copy_incomplete"))
     missing = [p for p in providers if p not in osh.attached_providers(project.sandbox)]
     for provider in missing:
         osh.attach_provider(project.sandbox, provider)

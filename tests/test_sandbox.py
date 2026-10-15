@@ -82,3 +82,17 @@ def test_broken_sandbox_is_recreated_after_confirmation(monkeypatch, tmp_path):
     monkeypatch.setattr(sb, "create", lambda *a, **k: calls.append("create"))
     assert sb.ensure_running(proj, [], lambda t: None, lambda q: True) is True
     assert calls == ["delete", "create"]
+
+
+def test_missing_marker_reruns_restore_instead_of_failing(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openshell_tg import osh
+    proj = SimpleNamespace(sandbox="otg-x", folder=tmp_path)
+    markers = iter([1, 0])  # first check: marker missing; after restore: present
+    restored = []
+    monkeypatch.setattr(sb, "_wait_while_busy", lambda name, say: "Ready")
+    monkeypatch.setattr(sb, "_restore", lambda p: restored.append(1))
+    monkeypatch.setattr(osh, "exec_", lambda *a, **k: SimpleNamespace(returncode=next(markers)))
+    monkeypatch.setattr(osh, "attached_providers", lambda name: set())
+    assert sb.ensure_running(proj, [], lambda t: None, lambda q: True) is False
+    assert restored == [1]

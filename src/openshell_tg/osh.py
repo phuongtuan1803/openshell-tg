@@ -194,14 +194,14 @@ def delete(name: str) -> None:
 
 def exec_(name: str, command: list[str], workdir: str | None = None, timeout: int = 300,
           check: bool = True) -> subprocess.CompletedProcess:
-    args = ["sandbox", "exec", name, "--no-tty", "--no-login-shell", "--timeout", str(timeout)]
+    args = ["sandbox", "exec", "-n", name, "--no-tty", "--no-login-shell", "--timeout", str(timeout)]
     if workdir:
         args += ["--workdir", workdir]
     return run([*args, "--", *command], timeout=timeout + 30, check=check)
 
 
 def attach(name: str, command: list[str], workdir: str) -> int:
-    return interactive(["sandbox", "exec", name, "--tty", "--timeout", "0", "--workdir", workdir, "--", *command])
+    return interactive(["sandbox", "exec", "-n", name, "--tty", "--timeout", "0", "--workdir", workdir, "--", *command])
 
 
 def upload(name: str, local: str, dest: str) -> None:
