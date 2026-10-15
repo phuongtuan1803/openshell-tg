@@ -1,0 +1,338 @@
+"""Every user-facing text, in plain language, English and Vietnamese.
+
+Rules: one idea per message, say what to do next, no jargon the user did not
+type themselves. Telegram texts may use <b> and <code>; terminal texts are plain.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+
+EN = {
+    # terminal: first run
+    "cli_description": "Run coding agents in an isolated sandbox and approve their network access from Telegram.",
+    "help_up": "set up what is missing, start this folder's sandbox, open the agent",
+    "help_status": "this folder's sandbox, the approval service, pending requests",
+    "help_list": "every sandbox on this machine",
+    "help_pull": "copy the agent's commits to this folder as otg/<branch>",
+    "help_destroy": "delete this folder's sandbox",
+    "new_project": "No openshell-tg.yaml in {folder}. Three questions to create it:",
+    "ask_agent": "Which agent?",
+    "ask_auth": "Log in with your subscription, or use an API key?",
+    "ask_github": "Should the agent be able to push branches and open pull requests on GitHub?",
+    "files_written": "Created {file} and openshell/policy.yaml. You can commit them; they contain no keys.",
+    "pick_one": "Please type one of: {options}",
+    "ask_language": "Language for messages / Ngôn ngữ:",
+    "ask_bot_token": "Paste the Telegram bot token from @BotFather (hidden):",
+    "send_start": "Open Telegram and send /start to @{bot}. Waiting…",
+    "no_start": "No /start message arrived. Run openshell-tg up again when you are ready.",
+    "bad_bot_token": "Telegram did not accept that bot token. Copy it again from @BotFather and retry.",
+    "sudo_once": "Installing the approval service. Your computer password is needed once.",
+    "sudo_failed": "Could not install the approval service. {detail}",
+    "no_systemd_creds": "This machine has no systemd-creds, which keeps the bot token encrypted. Use a Linux system with systemd 250 or newer.",
+    "no_credentials_dir": "The bot token is missing. Run openshell-tg up again to reinstall the service.",
+    "ask_credential": "{provider}: paste {what} (hidden, stored encrypted by OpenShell):",
+    "provider_saved": "{provider} key saved in OpenShell's encrypted store.",
+    "unknown_provider": "No provider profile named {names}. Check the providers list in openshell-tg.yaml.",
+    # terminal: host
+    "no_kvm": "This machine cannot run virtual machines. Turn on virtualization (VT-x or AMD-V) in the BIOS, then run openshell-tg up again.",
+    "kvm_no_access": "Your user cannot use virtualization yet. Run: sudo usermod -aG kvm {user} , log out and back in, then run openshell-tg up again.",
+    "install_openshell": "OpenShell {version} is not installed. Install it now?",
+    "need_openshell": "openshell-tg needs OpenShell. Run openshell-tg up again when you want to install it.",
+    "install_failed": "OpenShell could not be installed. See the messages above, then run openshell-tg up again.",
+    "gateway_starting": "Starting OpenShell…",
+    "gateway_down": "OpenShell did not start. Run: systemctl --user status openshell-gateway",
+    "gateway_vm": "Switching OpenShell to virtual machines (one time)…",
+    "gateway_not_vm": "OpenShell is set up for containers, not virtual machines. Set compute_driver = \"vm\" in {file}, then run openshell-tg up again.",
+    "gateway_config_rejected": "OpenShell rejected the virtual machine settings. {detail}",
+    "missing_program": "{program} is not installed on this machine.",
+    # terminal: sandbox
+    "up_creating": "Creating the sandbox and copying this folder in. The first time takes a few minutes…",
+    "up_starting": "Starting the sandbox…",
+    "up_waiting": "The sandbox is {phase}. Waiting for it…",
+    "secret_files": "These files would be copied into the sandbox: {files}. Add them to .gitignore, then run openshell-tg up again.",
+    "config_changed": "{what} changed since the sandbox was created. The change applies only to a new sandbox.",
+    "ask_rebuild": "Delete the sandbox and create a new one now?",
+    "unsaved_commits": "The sandbox has {count} commit(s) that are not on this machine or GitHub yet. Run openshell-tg pull first to keep them.",
+    "confirm_destroy_cli": "Delete sandbox {sandbox}? This cannot be undone.",
+    "attaching": "Opening {agent}. To leave and keep it working, press Ctrl-B then D.",
+    "login_hint": "First time: log in with the link and code the agent shows.",
+    "detached": "Left the agent. Run openshell-tg up here to come back.",
+    "no_config_here": "No openshell-tg.yaml here. Run openshell-tg up in your project folder.",
+    "no_sandbox": "This folder has no sandbox.",
+    "pull_not_running": "The sandbox is not running. Run openshell-tg up first.",
+    "pull_not_git": "This folder is not a git repository, so commits cannot be copied here.",
+    "pull_nothing": "The sandbox has no branches yet.",
+    "pull_branch": "{branch}: {count} commit(s) not in your current branch",
+    "cli_status": "Sandbox  {sandbox}: {state}\nApproval service: {service}\nWaiting for you: {pending}\nLast 7 days: {total} requests, response median {median}, 90% within {p90}",
+    "openshell_failed": "OpenShell could not finish this step. Details: {log}",
+    "cancelled": "Cancelled.",
+    "deleted": "Sandbox {sandbox} deleted.",
+    "list_empty": "No sandboxes yet. Run openshell-tg up in a project folder.",
+    "folder_missing": "(folder deleted)",
+    "phase_running": "running",
+    "phase_stopped": "stopped",
+    "phase_missing": "missing",
+    "phase_busy": "busy",
+    "ok": "running",
+    "down": "not running",
+    # config errors
+    "config_bad_yaml": "{file} is not valid YAML: {error}",
+    "config_unknown_keys": "openshell-tg.yaml has unknown settings: {keys}. Allowed: name, agent, auth, providers, policy, profiles, idle_stop.",
+    "config_bad_choice": "openshell-tg.yaml: {key} is {value}. Use one of: {choices}.",
+    "config_bad_providers": "openshell-tg.yaml: providers must be a list of names, for example [github, pypi].",
+    "config_bad_duration": "openshell-tg.yaml: idle_stop is {value}. Use a number with m, h or d, for example 24h.",
+    "config_no_subscription": "{agent} can only be used with an API key here. Set auth: api_key in openshell-tg.yaml.",
+    "config_missing_file": "{file} does not exist. Fix the policy path in openshell-tg.yaml.",
+    "config_secret": "{file} line {line} looks like a key or token. Remove it; openshell-tg asks for keys separately and stores them encrypted.",
+    # Telegram: commands
+    "cmd_help": "What this bot does",
+    "cmd_list": "All sandboxes",
+    "cmd_status": "Machine status and waiting requests",
+    "cmd_rules": "Approved addresses",
+    "help": ("<b>openshell-tg</b>\n"
+             "Agents work inside a closed sandbox on your machine. When one needs a new internet address, "
+             "a card appears here.\n\n"
+             "• <b>Approve</b> if the address fits the agent's task (package sites, docs, your own services).\n"
+             "• <b>Reject</b> if you do not recognise it or it is broader than needed.\n"
+             "• No answer within 30 minutes counts as Reject.\n\n"
+             "/list all sandboxes\n/status machine and waiting requests\n/rules approved addresses"),
+    "ready": "Ready. Requests from your agents will appear here. Send /help to see what I do.",
+    "list_title": "Sandboxes",
+    "list_row": "<b>{name}</b> · {state} · used {used} {missing}\n<code>{folder}</code>",
+    "status": ("<b>Status</b>\nOpenShell: {gateway}\nWaiting for you: {pending}\n\n"
+               "<b>Last 7 days</b>\nRequests: {total} ({approved} approved, {rejected} rejected, {expired} expired)\n"
+               "Your response: median {median}, 90% within {p90}\nAgents waited in total: {waited}"),
+    "rules_title": "<b>Approved addresses · {sandbox}</b>",
+    "rules_empty": "{sandbox}: no approved addresses yet.",
+    "rebooted": "The home machine restarted. The agent in <b>{sandbox}</b> stopped.\nRun <code>openshell-tg up</code> in <code>{folder}</code> to continue where it left off.",
+    "expired_while_off": "{count} request(s) expired while the machine was off. The agents were told no.",
+    "expired_while_offline": "{count} request(s) expired while Telegram was unreachable. The agents were told no.",
+    "remind_stopped": "<b>{sandbox}</b> has been stopped for {days} days. Delete it to free disk space?",
+    "remind_missing": "The folder of <b>{sandbox}</b> was deleted:\n<code>{folder}</code>\nDelete the sandbox too?",
+    "disk_low": "The disk is {percent}% full. Delete sandboxes you no longer need with /list.",
+    "confirm_delete": "Delete <b>{sandbox}</b>? This cannot be undone.",
+    "confirm_delete_unsaved": "<b>{sandbox}</b> has {count} commit(s) not saved anywhere else. Delete anyway? Run openshell-tg pull first to keep them.",
+    "kept": "Keeping <b>{sandbox}</b>. I will ask again in 14 days.",
+    # Telegram: cards
+    "card_title": "Network request",
+    "card_low_risk": "low risk",
+    "card_risky": "check carefully",
+    "card_sandbox": "Sandbox",
+    "card_address": "Address",
+    "card_program": "Program",
+    "card_reason": "Agent says",
+    "card_expires": "Expires",
+    "card_unparsed": "This request could not be read safely.",
+    "card_risky_hint": "To approve it, run on the machine:\n<code>openshell rule approve {sandbox} --chunk-id {chunk}</code>",
+    "card_reject_reason": "Reason",
+    "card_response": "Your response",
+    "card_moved": "(sent again below)",
+    "closed_approved": "✅ Approved",
+    "closed_rejected": "❌ Rejected",
+    "closed_expired": "⌛ Expired after 30 minutes, rejected",
+    "closed_expired_off": "⌛ Expired, the machine was off",
+    "closed_approved_elsewhere": "✅ Approved on the machine",
+    "closed_rejected_elsewhere": "❌ Rejected on the machine",
+    "closed_gone": "No longer needed",
+    "pick_reason": "Why? The agent will see this.",
+    "reason_broad": "Too broad, ask for something narrower",
+    "reason_unneeded": "Not needed for this task",
+    "reason_forbidden": "This service is not allowed",
+    "reason_expired": "No answer within 30 minutes",
+    "btn_approve": "Approve",
+    "btn_reject": "Reject",
+    "btn_details": "Details",
+    "btn_back": "Back",
+    "btn_stop": "Stop",
+    "btn_delete": "Delete",
+    "btn_delete_yes": "Yes, delete",
+    "btn_cancel": "Cancel",
+    "btn_keep": "Keep 14 days",
+    "btn_remove": "Remove",
+    "toast_handled": "Already handled",
+    "toast_failed": "That did not work. Try again, or check openshell-tg status on the machine.",
+    "toast_risky": "Approve this one on the machine.",
+    "toast_removed": "Removed",
+    "toast_stopped": "Stopped",
+}
+
+VI = {
+    "cli_description": "Chạy agent lập trình trong sandbox cách ly và duyệt quyền mạng của chúng qua Telegram.",
+    "help_up": "thiết lập phần còn thiếu, bật sandbox của thư mục này, mở agent",
+    "help_status": "sandbox của thư mục này, dịch vụ duyệt, yêu cầu đang chờ",
+    "help_list": "mọi sandbox trên máy",
+    "help_pull": "lấy commit của agent về thư mục này thành nhánh otg/<tên>",
+    "help_destroy": "xóa sandbox của thư mục này",
+    "new_project": "Chưa có openshell-tg.yaml trong {folder}. Trả lời 3 câu để tạo:",
+    "ask_agent": "Dùng agent nào?",
+    "ask_auth": "Đăng nhập bằng thuê bao, hay dùng khóa API?",
+    "ask_github": "Cho agent push nhánh và mở pull request trên GitHub không?",
+    "files_written": "Đã tạo {file} và openshell/policy.yaml. Có thể commit, trong đó không có khóa.",
+    "pick_one": "Hãy gõ một trong: {options}",
+    "ask_language": "Language for messages / Ngôn ngữ:",
+    "ask_bot_token": "Dán token bot Telegram lấy từ @BotFather (không hiện ra):",
+    "send_start": "Mở Telegram và gửi /start cho @{bot}. Đang chờ…",
+    "no_start": "Chưa nhận được /start. Khi sẵn sàng, chạy lại openshell-tg up.",
+    "bad_bot_token": "Telegram không nhận token này. Chép lại từ @BotFather rồi thử lại.",
+    "sudo_once": "Đang cài dịch vụ duyệt. Cần nhập mật khẩu máy một lần.",
+    "sudo_failed": "Không cài được dịch vụ duyệt. {detail}",
+    "no_systemd_creds": "Máy không có systemd-creds để mã hóa token bot. Cần Linux có systemd 250 trở lên.",
+    "no_credentials_dir": "Thiếu token bot. Chạy lại openshell-tg up để cài lại dịch vụ.",
+    "ask_credential": "{provider}: dán {what} (không hiện ra, OpenShell lưu mã hóa):",
+    "provider_saved": "Đã lưu khóa {provider} vào kho mã hóa của OpenShell.",
+    "unknown_provider": "Không có provider profile tên {names}. Kiểm tra danh sách providers trong openshell-tg.yaml.",
+    "no_kvm": "Máy này chưa chạy được máy ảo. Bật ảo hóa (VT-x hoặc AMD-V) trong BIOS rồi chạy lại openshell-tg up.",
+    "kvm_no_access": "Tài khoản của bạn chưa dùng được ảo hóa. Chạy: sudo usermod -aG kvm {user} , đăng xuất rồi đăng nhập lại, sau đó chạy lại openshell-tg up.",
+    "install_openshell": "Chưa cài OpenShell {version}. Cài ngay bây giờ?",
+    "need_openshell": "openshell-tg cần OpenShell. Khi muốn cài, chạy lại openshell-tg up.",
+    "install_failed": "Không cài được OpenShell. Xem thông báo phía trên rồi chạy lại openshell-tg up.",
+    "gateway_starting": "Đang bật OpenShell…",
+    "gateway_down": "OpenShell không bật được. Chạy: systemctl --user status openshell-gateway",
+    "gateway_vm": "Đang chuyển OpenShell sang chạy máy ảo (một lần)…",
+    "gateway_not_vm": "OpenShell đang cấu hình cho container, chưa phải máy ảo. Đặt compute_driver = \"vm\" trong {file} rồi chạy lại openshell-tg up.",
+    "gateway_config_rejected": "OpenShell không nhận cấu hình máy ảo. {detail}",
+    "missing_program": "Máy chưa cài {program}.",
+    "up_creating": "Đang tạo sandbox và chép thư mục vào. Lần đầu mất vài phút…",
+    "up_starting": "Đang bật sandbox…",
+    "up_waiting": "Sandbox đang ở trạng thái {phase}. Đang chờ…",
+    "secret_files": "Các file này sẽ bị chép vào sandbox: {files}. Thêm chúng vào .gitignore rồi chạy lại openshell-tg up.",
+    "config_changed": "{what} đã đổi từ khi tạo sandbox. Thay đổi chỉ áp dụng cho sandbox mới.",
+    "ask_rebuild": "Xóa sandbox và tạo cái mới ngay?",
+    "unsaved_commits": "Sandbox còn {count} commit chưa có trên máy này hay GitHub. Chạy openshell-tg pull trước để giữ lại.",
+    "confirm_destroy_cli": "Xóa sandbox {sandbox}? Không hoàn tác được.",
+    "attaching": "Đang mở {agent}. Muốn rời mà agent vẫn làm tiếp: bấm Ctrl-B rồi D.",
+    "login_hint": "Lần đầu: đăng nhập bằng link và mã agent hiện ra.",
+    "detached": "Đã rời agent. Chạy openshell-tg up ở đây để quay lại.",
+    "no_config_here": "Không có openshell-tg.yaml ở đây. Chạy openshell-tg up trong thư mục dự án.",
+    "no_sandbox": "Thư mục này chưa có sandbox.",
+    "pull_not_running": "Sandbox đang dừng. Chạy openshell-tg up trước.",
+    "pull_not_git": "Thư mục này không phải repo git nên không lấy commit về được.",
+    "pull_nothing": "Sandbox chưa có nhánh nào.",
+    "pull_branch": "{branch}: {count} commit chưa có trong nhánh hiện tại",
+    "cli_status": "Sandbox  {sandbox}: {state}\nDịch vụ duyệt: {service}\nĐang chờ bạn: {pending}\n7 ngày qua: {total} yêu cầu, phản hồi trung vị {median}, 90% trong {p90}",
+    "openshell_failed": "OpenShell chưa làm xong bước này. Chi tiết: {log}",
+    "cancelled": "Đã hủy.",
+    "deleted": "Đã xóa sandbox {sandbox}.",
+    "list_empty": "Chưa có sandbox nào. Chạy openshell-tg up trong một thư mục dự án.",
+    "folder_missing": "(thư mục đã bị xóa)",
+    "phase_running": "đang chạy",
+    "phase_stopped": "đã dừng",
+    "phase_missing": "không còn",
+    "phase_busy": "đang xử lý",
+    "ok": "đang chạy",
+    "down": "không chạy",
+    "config_bad_yaml": "{file} sai định dạng YAML: {error}",
+    "config_unknown_keys": "openshell-tg.yaml có mục lạ: {keys}. Chỉ dùng: name, agent, auth, providers, policy, profiles, idle_stop.",
+    "config_bad_choice": "openshell-tg.yaml: {key} đang là {value}. Dùng một trong: {choices}.",
+    "config_bad_providers": "openshell-tg.yaml: providers phải là danh sách tên, ví dụ [github, pypi].",
+    "config_bad_duration": "openshell-tg.yaml: idle_stop đang là {value}. Dùng số kèm m, h hoặc d, ví dụ 24h.",
+    "config_no_subscription": "{agent} ở đây chỉ dùng được bằng khóa API. Đặt auth: api_key trong openshell-tg.yaml.",
+    "config_missing_file": "Không có file {file}. Sửa đường dẫn policy trong openshell-tg.yaml.",
+    "config_secret": "{file} dòng {line} trông giống khóa hoặc token. Hãy xóa đi; openshell-tg hỏi khóa riêng và lưu mã hóa.",
+    "cmd_help": "Bot này làm gì",
+    "cmd_list": "Mọi sandbox",
+    "cmd_status": "Trạng thái máy và yêu cầu đang chờ",
+    "cmd_rules": "Địa chỉ đã duyệt",
+    "help": ("<b>openshell-tg</b>\n"
+             "Agent làm việc trong sandbox kín trên máy nhà. Khi agent cần một địa chỉ internet mới, "
+             "một thẻ sẽ hiện ở đây.\n\n"
+             "• <b>Duyệt</b> nếu địa chỉ hợp với việc agent đang làm (trang tải gói, tài liệu, dịch vụ của bạn).\n"
+             "• <b>Từ chối</b> nếu bạn không biết địa chỉ đó hoặc nó rộng hơn cần thiết.\n"
+             "• Không trả lời trong 30 phút thì tính là Từ chối.\n\n"
+             "/list mọi sandbox\n/status trạng thái máy và yêu cầu đang chờ\n/rules địa chỉ đã duyệt"),
+    "ready": "Sẵn sàng. Yêu cầu từ agent sẽ hiện ở đây. Gửi /help để xem bot làm gì.",
+    "list_title": "Sandbox",
+    "list_row": "<b>{name}</b> · {state} · dùng {used} {missing}\n<code>{folder}</code>",
+    "status": ("<b>Trạng thái</b>\nOpenShell: {gateway}\nĐang chờ bạn: {pending}\n\n"
+               "<b>7 ngày qua</b>\nYêu cầu: {total} ({approved} duyệt, {rejected} từ chối, {expired} hết hạn)\n"
+               "Bạn phản hồi: trung vị {median}, 90% trong {p90}\nAgent chờ tổng cộng: {waited}"),
+    "rules_title": "<b>Địa chỉ đã duyệt · {sandbox}</b>",
+    "rules_empty": "{sandbox}: chưa duyệt địa chỉ nào.",
+    "rebooted": "Máy nhà vừa khởi động lại. Agent trong <b>{sandbox}</b> đã dừng.\nChạy <code>openshell-tg up</code> trong <code>{folder}</code> để làm tiếp.",
+    "expired_while_off": "{count} yêu cầu hết hạn trong lúc máy tắt. Agent đã nhận câu trả lời là không.",
+    "expired_while_offline": "{count} yêu cầu hết hạn trong lúc mất kết nối Telegram. Agent đã nhận câu trả lời là không.",
+    "remind_stopped": "<b>{sandbox}</b> đã dừng {days} ngày. Xóa để giải phóng ổ đĩa?",
+    "remind_missing": "Thư mục của <b>{sandbox}</b> đã bị xóa:\n<code>{folder}</code>\nXóa luôn sandbox?",
+    "disk_low": "Ổ đĩa đã đầy {percent}%. Xóa sandbox không cần nữa bằng /list.",
+    "confirm_delete": "Xóa <b>{sandbox}</b>? Không hoàn tác được.",
+    "confirm_delete_unsaved": "<b>{sandbox}</b> còn {count} commit chưa lưu ở đâu khác. Vẫn xóa? Chạy openshell-tg pull trước để giữ lại.",
+    "kept": "Giữ <b>{sandbox}</b>. Sau 14 ngày sẽ hỏi lại.",
+    "card_title": "Yêu cầu mở mạng",
+    "card_low_risk": "rủi ro thấp",
+    "card_risky": "cần xem kỹ",
+    "card_sandbox": "Sandbox",
+    "card_address": "Địa chỉ",
+    "card_program": "Chương trình",
+    "card_reason": "Agent ghi",
+    "card_expires": "Hết hạn",
+    "card_unparsed": "Không đọc được yêu cầu này một cách an toàn.",
+    "card_risky_hint": "Muốn duyệt, chạy trên máy:\n<code>openshell rule approve {sandbox} --chunk-id {chunk}</code>",
+    "card_reject_reason": "Lý do",
+    "card_response": "Bạn phản hồi",
+    "card_moved": "(đã gửi lại bên dưới)",
+    "closed_approved": "✅ Đã duyệt",
+    "closed_rejected": "❌ Đã từ chối",
+    "closed_expired": "⌛ Hết hạn sau 30 phút, đã từ chối",
+    "closed_expired_off": "⌛ Hết hạn, máy đã tắt",
+    "closed_approved_elsewhere": "✅ Đã duyệt trên máy",
+    "closed_rejected_elsewhere": "❌ Đã từ chối trên máy",
+    "closed_gone": "Không còn cần",
+    "pick_reason": "Lý do? Agent sẽ thấy câu này.",
+    "reason_broad": "Quá rộng, xin hẹp hơn",
+    "reason_unneeded": "Không cần cho việc này",
+    "reason_forbidden": "Không được dùng dịch vụ này",
+    "reason_expired": "Không trả lời trong 30 phút",
+    "btn_approve": "Duyệt",
+    "btn_reject": "Từ chối",
+    "btn_details": "Chi tiết",
+    "btn_back": "Quay lại",
+    "btn_stop": "Dừng",
+    "btn_delete": "Xóa",
+    "btn_delete_yes": "Có, xóa",
+    "btn_cancel": "Hủy",
+    "btn_keep": "Giữ 14 ngày",
+    "btn_remove": "Gỡ",
+    "toast_handled": "Yêu cầu này đã xử lý",
+    "toast_failed": "Chưa làm được. Thử lại, hoặc chạy openshell-tg status trên máy.",
+    "toast_risky": "Yêu cầu này cần duyệt trên máy.",
+    "toast_removed": "Đã gỡ",
+    "toast_stopped": "Đã dừng",
+}
+
+LANGUAGES = {"en": EN, "vi": VI}
+_language = "en"
+
+
+def default_language() -> str:
+    return "vi" if os.environ.get("LANG", "").lower().startswith("vi") else "en"
+
+
+def set_language(lang: str) -> None:
+    global _language
+    _language = lang if lang in LANGUAGES else "en"
+
+
+def t(_key: str, /, lang: str | None = None, **kw) -> str:
+    table = LANGUAGES.get(lang or _language, EN)
+    text = table.get(_key) or EN.get(_key) or _key
+    return text.format(**kw) if kw else text
+
+
+def duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "–"
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds} s"
+    if seconds < 3600:
+        return f"{seconds // 60} min {seconds % 60} s" if _language == "en" else f"{seconds // 60} phút {seconds % 60} giây"
+    hours, minutes = seconds // 3600, seconds % 3600 // 60
+    return f"{hours} h {minutes} min" if _language == "en" else f"{hours} giờ {minutes} phút"
+
+
+def ago(timestamp: float | None) -> str:
+    if not timestamp:
+        return "–"
+    return duration(time.time() - timestamp) + (" ago" if _language == "en" else " trước")

@@ -1,0 +1,42 @@
+# OpenShell sandbox policy, in OpenShell's own format.
+# Contains only what the claude subscription login and model API need.
+# The agent asks for other addresses and you approve them in Telegram.
+version: 1
+
+network_policies:
+  claude_subscription:
+    endpoints:
+      - host: api.anthropic.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: claude.ai
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: platform.claude.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: console.anthropic.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: statsig.anthropic.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+    binaries:
+      - path: /usr/bin/claude
+      - path: /usr/lib/node_modules/@anthropic-ai/**
+
+# To let the agent change only part of the folder, add (applies on rebuild):
+# filesystem_policy:
+#   include_workdir: false
+#   read_only: [/sandbox/workspace]
+#   read_write: [/sandbox/workspace/src/my_module, /sandbox/workspace/.git, /tmp]

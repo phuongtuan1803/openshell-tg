@@ -1,0 +1,12 @@
+# OpenShell sandbox policy, in OpenShell's own format.
+# It starts with no network access of its own. The agent asks for new
+# addresses and you approve them in Telegram; OpenShell adds approved rules.
+version: 1
+
+network_policies: {}
+
+# To let the agent change only part of the folder, add (applies on rebuild):
+# filesystem_policy:
+#   include_workdir: false
+#   read_only: [/sandbox/workspace]
+#   read_write: [/sandbox/workspace/src/my_module, /sandbox/workspace/.git, /tmp]

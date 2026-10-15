@@ -1,0 +1,33 @@
+#!/bin/sh
+# Opens the agent in a tmux session named "agent", or re-attaches to it.
+# Started by `openshell-tg up` through `openshell sandbox exec`.
+set -eu
+agent="${1:?usage: otg-agent codex|claude|opencode}"
+cd /sandbox/workspace
+
+# Personal instructions for each agent (read in addition to the project's own).
+guide=/usr/share/openshell-tg/AGENTS.md
+for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/opencode/AGENTS.md"; do
+  [ -f "$target" ] || { mkdir -p "$(dirname "$target")"; cp "$guide" "$target"; }
+done
+
+if tmux has-session -t agent 2>/dev/null; then
+  exec tmux attach-session -t agent
+fi
+
+has_history() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
+
+case "$agent" in
+  codex)
+    flags="--dangerously-bypass-approvals-and-sandbox"
+    if has_history "$HOME/.codex/sessions"; then cmd="codex $flags resume --last"; else cmd="codex $flags"; fi ;;
+  claude)
+    flags="--dangerously-skip-permissions"
+    if has_history "$HOME/.claude/projects"; then cmd="claude $flags --continue"; else cmd="claude $flags"; fi ;;
+  opencode)
+    if has_history "$HOME/.local/share/opencode/storage"; then cmd="opencode --continue"; else cmd="opencode"; fi ;;
+  *)
+    echo "Unknown agent: $agent" >&2; exit 2 ;;
+esac
+
+exec tmux new-session -s agent "$cmd"
