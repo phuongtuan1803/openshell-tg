@@ -212,18 +212,22 @@ class Bot:
             self.say("list_empty")
             return
         for box in boxes:
-            rules = self.approvals.approved(box.name)
-            if not rules:
-                self.say("rules_empty", sandbox=html.escape(box.name))
-                continue
-            lines = [m.t("rules_title", sandbox=html.escape(box.name))]
-            buttons = []
-            for rule, endpoints in rules[:30]:
-                lines.append(f"• <code>{html.escape(endpoints[:200])}</code> ({html.escape(rule[:60])})")
-                token = secrets.token_hex(4)
-                self.store.put(f"rm:{token}", f"{box.name}\n{rule}")
-                buttons.append([(m.t("btn_remove") + " " + (endpoints or rule)[:40], f"rm:{token}")])
-            self.tg.send(self.chat_id, "\n".join(lines), buttons)
+            text, buttons = self.rules_view(box.name)
+            self.tg.send(self.chat_id, text, buttons)
+
+    def rules_view(self, name: str) -> tuple[str, list | None]:
+        """Text and Remove buttons for the addresses the sandbox's active policy allows."""
+        rules = self.approvals.approved(name)
+        if not rules:
+            return m.t("rules_empty", sandbox=html.escape(name)), None
+        lines = [m.t("rules_title", sandbox=html.escape(name))]
+        buttons = []
+        for rule, endpoints in rules[:30]:
+            lines.append(f"• <code>{html.escape(endpoints[:200])}</code> ({html.escape(rule[:60])})")
+            token = secrets.token_hex(4)
+            self.store.put(f"rm:{token}", f"{name}\n{rule}")
+            buttons.append([(m.t("btn_remove") + " " + (endpoints or rule)[:40], f"rm:{token}")])
+        return "\n".join(lines), buttons
 
     # buttons
 
@@ -238,6 +242,13 @@ class Bot:
             name, rule = value.split("\n", 1)
             ok = self.approvals.remove(name, rule)
             self.store.db.execute("DELETE FROM meta WHERE key=?", (f"rm:{arg}",))
+            if ok and message_id is not None:
+                # Redraw the list from the policy as it is now, so the removed address disappears.
+                text, buttons = self.rules_view(name)
+                try:
+                    self.tg.edit(self.chat_id, message_id, text, buttons)
+                except TelegramError as exc:
+                    log.warning("edit rules list failed: %s", exc)
             return m.t("toast_removed") if ok else m.t("toast_failed")
         box = self.store.sandbox(arg)
         if box is None:

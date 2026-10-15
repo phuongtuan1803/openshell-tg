@@ -54,6 +54,21 @@ def test_rules_remove_button(bot, tg, store, monkeypatch):
     assert bot.on_button(data, None) == "Already handled"
 
 
+def test_rules_list_is_redrawn_after_removal(bot, tg, store, monkeypatch):
+    store.save_sandbox("otg-a-1", "/a", "codex", 3600)
+    policies = {"allow_pypi": {"endpoints": [{"host": "pypi.org", "port": 443}]},
+                "allow_npm": {"endpoints": [{"host": "registry.npmjs.org", "port": 443}]}}
+    monkeypatch.setattr(osh, "network_policies", lambda name: dict(policies))
+    monkeypatch.setattr(osh, "remove_rule", lambda name, rule: policies.pop(rule))
+    bot.handle(message("/rules"))
+    first = next(data for row in tg.sent[0][2] for label, data in row if "pypi.org" in label)
+    assert "pypi.org" in tg.sent[0][1] and "registry.npmjs.org" in tg.sent[0][1]
+    assert bot.on_button(first, 77) == "Removed"
+    msg_id, text, buttons = tg.edits[-1]
+    assert msg_id == 77 and "pypi.org" not in text and "registry.npmjs.org" in text
+    assert len(buttons) == 1
+
+
 def test_reboot_notice(bot, tg, store, monkeypatch):
     store.save_sandbox("otg-a-1", "/a", "codex", 3600)
     store.put("boot", "1")
