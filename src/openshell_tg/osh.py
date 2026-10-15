@@ -57,8 +57,11 @@ def run(args: list[str], *, env: dict[str, str] | None = None, timeout: float = 
     except subprocess.TimeoutExpired:
         raise OpenShellError(args, 124, f"timed out after {timeout:.0f} s") from None
     if check and proc.returncode != 0:
-        log.warning("openshell %s -> %s: %s", args[:3], proc.returncode, proc.stderr.strip()[-2000:])
-        raise OpenShellError(args, proc.returncode, proc.stderr)
+        error = OpenShellError(args, proc.returncode, proc.stderr)
+        # "Not found" is an expected answer for polling a sandbox that is gone.
+        log.log(logging.DEBUG if error.not_found else logging.WARNING, "openshell %s -> %s: %s",
+                args[:3], proc.returncode, proc.stderr.strip()[-2000:])
+        raise error
     return proc
 
 
