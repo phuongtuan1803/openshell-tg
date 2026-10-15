@@ -1,3 +1,4 @@
+import yaml
 from openshell_tg import osh
 
 SAMPLE = """\
@@ -114,17 +115,23 @@ def test_create_arguments(fake_openshell):
     assert argv[-2:] == ["-o", "json"]
 
 
-def test_import_profile_updates_existing(fake_openshell, monkeypatch):
+def test_import_profile_updates_existing(tmp_path, monkeypatch):
+    src = tmp_path / "github.yaml"
+    src.write_text("id: github\ndisplay_name: GitHub\n")
     calls = []
 
     def fake_run(args, **kw):
         calls.append(args)
         if args[1] == "import":
             raise osh.OpenShellError(args, 1, "custom provider profile 'github' already exists")
+        if args[1] == "update":
+            sent = yaml.safe_load(open(args[4]))
+            assert sent == {"id": "github", "display_name": "GitHub", "resource_version": 7}
 
     monkeypatch.setattr(osh, "run", fake_run)
-    osh.import_profile("/x/github.yaml", "github")
-    assert calls[1] == ["profile", "update", "github", "-f", "/x/github.yaml"]
+    monkeypatch.setattr(osh, "run_json", lambda args, **kw: {"id": "github", "resource_version": 7})
+    osh.import_profile(str(src), "github")
+    assert calls[1][:4] == ["profile", "update", "github", "-f"]
 
 
 def test_forged_header_and_decoy_chunk_are_untrusted():

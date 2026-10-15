@@ -12,7 +12,10 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
+
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -102,13 +105,29 @@ def enable_proposals() -> None:
 # profiles and providers
 
 def import_profile(path: str, profile_id: str) -> None:
-    """Import a provider profile, or update it when it already exists."""
+    """Import a provider profile, or update it when it already exists.
+
+    An update must carry the stored profile's resource_version, so the current
+    one is exported first and copied into a temporary copy of the file.
+    """
     try:
         run(["profile", "import", "-f", path])
     except OpenShellError as exc:
         if "already exists" not in exc.stderr:
             raise
-        run(["profile", "update", profile_id, "-f", path])
+    else:
+        return
+    version = run_json(["profile", "export", profile_id], timeout=60).get("resource_version")
+    if not version:
+        raise OpenShellError(["profile", "export", profile_id], 0, "no resource_version in exported profile")
+    with open(path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    data["resource_version"] = version
+    with tempfile.TemporaryDirectory() as tmp:
+        updated = os.path.join(tmp, os.path.basename(path))
+        with open(updated, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False)
+        run(["profile", "update", profile_id, "-f", updated])
 
 
 def providers() -> set[str]:
