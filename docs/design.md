@@ -325,13 +325,21 @@ The CLI and the service both open the database (WAL mode). Losing it loses only 
 | Secret in a config file | "openshell-tg.yaml line 4 looks like a key. Remove it; keys are asked for separately." | Stop |
 | Secret file would be copied | ".env would be copied into the sandbox. Add it to .gitignore, then run up again." | Stop |
 | Telegram unreachable | Nothing until it is back, then the expired count | Cards expire and are rejected |
-| Any `openshell` failure | "OpenShell could not start the sandbox. Details: ~/.local/state/openshell-tg/openshell-tg.log" | Exit 1 |
+| Any `openshell` failure | Step that failed, `Cause:` and `Do this:` for recognised causes (below), last lines of the error, log path | Exit 1; `up` is safe to run again |
+| Image cannot be downloaded | Cause: access denied; set the package to Public | A failed create deletes the half-built sandbox |
+| Sandbox in phase Error cannot start | "Delete it and create a new one?" | Deletes only the sandbox, then creates it again |
+| Unexpected exception | "Something unexpected went wrong" and the log path | Traceback goes to the log only; exit 1 |
+
+Recognised causes (`diagnose.py`, matched on the error text): image access denied, image missing, gateway not answering, timeout, disk full, no KVM access, wrong sandbox state, item not found. Anything else shows `Cause: not recognised` with the detail. The error text never contains secrets, because secrets travel in the environment and never in arguments.
+
+The log is `~/.local/state/openshell-tg/openshell-tg.log`, rotated at 1 MB with 3 backups. `openshell-tg logs [-n N]` prints its last lines.
 
 ## 11. Code layout
 
 | Path | Responsibility |
 | --- | --- |
-| `src/openshell_tg/cli.py` | Commands `up`, `status`, `list`, `pull`, `destroy`, hidden `serve` |
+| `src/openshell_tg/cli.py` | Commands `up`, `status`, `list`, `pull`, `destroy`, `logs`, hidden `serve` |
+| `src/openshell_tg/diagnose.py` | Turns an `openshell` failure into a cause, a next step and the last lines of the error |
 | `src/openshell_tg/project.py` | `openshell-tg.yaml`: load, validate, secret check, create |
 | `src/openshell_tg/host.py` | KVM, OpenShell install, gateway config, Telegram setup, service install |
 | `src/openshell_tg/osh.py` | The only module that runs `openshell`; parses `rule get` text |
@@ -356,6 +364,7 @@ Dependencies: Python 3.11+, PyYAML. Tests mock the `openshell` binary with a fak
 | `openshell-tg list` | All sandboxes on the machine with folder, state, last use, whether the folder still exists |
 | `openshell-tg pull` | Section 5.4 |
 | `openshell-tg destroy` | Delete this folder's sandbox after confirmation |
+| `openshell-tg logs` | Last 40 lines of the log (`-n N` for more) |
 
 ## 13. Verification before first release
 

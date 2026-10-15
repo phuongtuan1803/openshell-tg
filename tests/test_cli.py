@@ -50,4 +50,4 @@ def test_up_reports_openshell_failure_plainly(wired, tmp_path, monkeypatch, caps
     monkeypatch.setattr(sb, "ensure_running", boom)
     assert cli.main(["up"]) == 1
     out = capsys.readouterr().out
-    assert "could not finish" in out and "Traceback" not in out
+    assert "Stopped at: openshell sandbox create" in out and "Traceback" not in out

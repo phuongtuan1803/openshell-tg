@@ -6,13 +6,14 @@ import argparse
 import getpass
 import hashlib
 import logging
+import logging.handlers
 import subprocess
 import sys
 from pathlib import Path
 
 import yaml
 
-from . import __version__, host, osh, project
+from . import __version__, diagnose, host, osh, project
 from . import messages as m
 from . import sandbox as sb
 from .project import ConfigError, Project
@@ -49,8 +50,22 @@ def prompt_secret(question: str) -> str:
             return value
 
 
+def LOG_FILE() -> Path:
+    return state_dir() / "openshell-tg.log"
+
+
+def cmd_logs(args) -> int:
+    path = LOG_FILE()
+    lines = path.read_text(errors="replace").splitlines() if path.exists() else []
+    if not lines:
+        say(m.t("log_empty"))
+        return 0
+    say("\n".join(lines[-args.lines:]))
+    return 0
+
+
 def setup_logging(service: bool = False) -> None:
-    handler = logging.FileHandler(state_dir() / "openshell-tg.log")
+    handler = logging.handlers.RotatingFileHandler(LOG_FILE(), maxBytes=1_000_000, backupCount=3)
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root = logging.getLogger()
     root.setLevel(logging.INFO)
@@ -243,6 +258,9 @@ def main(argv: list[str] | None = None) -> int:
     for name, func in (("up", cmd_up), ("status", cmd_status), ("list", cmd_list),
                        ("pull", cmd_pull), ("destroy", cmd_destroy)):
         sub.add_parser(name, help=m.t(f"help_{name}")).set_defaults(func=func)
+    logs = sub.add_parser("logs", help=m.t("help_logs"))
+    logs.add_argument("-n", "--lines", type=int, default=40)
+    logs.set_defaults(func=cmd_logs)
     sub.add_parser("serve").set_defaults(func=cmd_serve)
     args = parser.parse_args(argv)
     setup_logging(service=args.command == "serve")
@@ -252,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
         say(str(exc))
     except osh.OpenShellError as exc:
         log.error("%s", exc)
-        say(m.t("openshell_failed", log=state_dir() / "openshell-tg.log"))
+        say(diagnose.report(exc, LOG_FILE()))
     except subprocess.CalledProcessError as exc:
         log.error("%s: %s", exc, (exc.stderr or "").strip()[-1000:])
         say(m.t("git_failed", log=state_dir() / "openshell-tg.log"))
@@ -262,6 +280,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         say("")
         return 130
+    except Exception:
+        log.exception("unexpected error")
+        say(m.t("unexpected", log=LOG_FILE()))
     return 1
 
 

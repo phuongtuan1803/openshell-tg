@@ -193,10 +193,20 @@ openshell-tg up
 | `These files would be copied into the sandbox: .env…` | Add the files to `.gitignore`, then run `openshell-tg up` again |
 | `… line … looks like a key or token…` | Delete that line from the file named; keys are asked for separately |
 | `Copying the folder into the sandbox did not finish…` | Run `openshell-tg destroy`, then `openshell-tg up` |
-| `OpenShell could not finish this step. Details: …` | Run the step again. If it repeats, send the last 30 lines of the log file named in the message to whoever maintains your setup |
+| `✗ Stopped at: openshell …` | Read the line that starts with `Cause:` and do the step on the line `Do this:`. Then run `openshell-tg up` again; it continues where it stopped |
+| `Cause: … cannot download the agent image` | On GitHub, open Packages > openshell-tg-agent > Package settings, set visibility to Public, run `openshell-tg up` again |
+| `Cause: OpenShell is not answering` | `systemctl --user restart openshell-gateway`, wait 10 seconds, run `openshell-tg up` again |
+| `The sandbox is broken and cannot start. Delete it and create a new one?` | Type `y`. Only the sandbox is deleted; your folder is not touched |
+| `Something unexpected went wrong` | Run `openshell-tg up` again. If it repeats, send the output of `openshell-tg logs` to whoever maintains your setup |
 | No cards arrive in Telegram | Send `/status` to the bot. If there is no answer, run `systemctl status openshell-tg` on the machine and check that it says `active (running)` |
 
-Logs: `~/.local/state/openshell-tg/openshell-tg.log` (never contains keys).
+Show the last 40 lines of the log:
+
+```
+openshell-tg logs
+```
+
+**Expected result:** timestamped lines, newest last. Use `openshell-tg logs -n 200` for more. The file is `~/.local/state/openshell-tg/openshell-tg.log`; it never contains keys and is capped at about 4 MB.
 
 ## 9. Remove openshell-tg
 
