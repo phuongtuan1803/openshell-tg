@@ -16,12 +16,14 @@ from .project import Project
 
 IMAGE = os.environ.get("OPENSHELL_TG_IMAGE", f"ghcr.io/phuongtuan1803/openshell-tg-agent:{__version__}")
 WORKDIR = "/sandbox/workspace"
-OTG_DIR = "/sandbox/.otg"
-FOLDER_LABEL = "openshell-tg/folder"
+IN_BUNDLE = f"{WORKDIR}/.otg-in.bundle"
+OUT_BUNDLE = f"{WORKDIR}/.git/otg-out.bundle"
+RESTORED = f"{WORKDIR}/.git/otg-restored"
 
 # Files that must never be copied into a sandbox. Matched against basenames.
 SECRET_FILES = (".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_dsa*",
-                "id_ecdsa*", "id_ed25519*", ".netrc", ".pgpass", "*.kdbx", "credentials.json")
+                "id_ecdsa*", "id_ed25519*", ".netrc", ".pgpass", "*.kdbx", "credentials.json",
+                "credentials", ".npmrc", ".pypirc", ".git-credentials", "*.tfstate", "*.tfstate.backup")
 SECRET_ALLOW = (".env.example", ".env.sample", ".env.template", "*.pub")
 
 
@@ -54,15 +56,23 @@ def files_to_copy(folder: Path) -> list[str]:
     return [str(p.relative_to(folder)) for p in folder.rglob("*") if p.is_file()]
 
 
+def _is_secret(rel: str) -> bool:
+    base = os.path.basename(rel)
+    if any(fnmatch.fnmatch(base, a) for a in SECRET_ALLOW):
+        return False
+    return any(fnmatch.fnmatch(base, s) for s in SECRET_FILES)
+
+
 def secret_files(folder: Path) -> list[str]:
-    found = []
-    for rel in files_to_copy(folder):
-        base = os.path.basename(rel)
-        if any(fnmatch.fnmatch(base, a) for a in SECRET_ALLOW):
-            continue
-        if any(fnmatch.fnmatch(base, s) for s in SECRET_FILES):
-            found.append(rel)
-    return sorted(found)
+    return sorted(rel for rel in files_to_copy(folder) if _is_secret(rel))
+
+
+def secret_files_in_history(folder: Path) -> list[str]:
+    """Secret-looking files that were committed on some branch at some point."""
+    if not is_git(folder):
+        return []
+    out = _git(folder, "log", "--branches", "--name-only", "--format=", check=False).stdout
+    return sorted({rel for rel in out.splitlines() if rel and _is_secret(rel)})
 
 
 def _restore_history_script(sha: str | None, name: str, email: str) -> str:
@@ -76,11 +86,11 @@ def _restore_history_script(sha: str | None, name: str, email: str) -> str:
     ]
     if sha:
         lines += [
-            f"git fetch -q --update-head-ok {OTG_DIR}/in.bundle '+refs/heads/*:refs/heads/*'",
+            f"git fetch -q --update-head-ok {IN_BUNDLE} '+refs/heads/*:refs/heads/*' HEAD",
             "git symbolic-ref HEAD refs/heads/work",
             # Points 'work' at the host commit; index follows, files stay as uploaded.
             f"git reset -q {q(sha)}",
-            f"rm -f {OTG_DIR}/in.bundle",
+            f"rm -f {IN_BUNDLE}",
         ]
     else:
         lines += [
@@ -88,13 +98,17 @@ def _restore_history_script(sha: str | None, name: str, email: str) -> str:
             "git add -A",
             "git commit -q --allow-empty -m 'Copy of the project folder'",
         ]
+    lines.append(f"touch {RESTORED}")
     return "\n".join(lines)
 
 
-def create(project: Project, providers: list[str], say) -> None:
+def create(project: Project, providers: list[str], say, confirm) -> None:
     secrets = secret_files(project.folder)
     if secrets:
         raise SandboxError(m.t("secret_files", files=", ".join(secrets[:5])))
+    in_history = secret_files_in_history(project.folder)
+    if in_history and not confirm(m.t("secret_history", files=", ".join(in_history[:5]))):
+        raise SandboxError(m.t("cancelled"))
 
     say(m.t("up_creating"))
     osh.create(
@@ -102,8 +116,8 @@ def create(project: Project, providers: list[str], say) -> None:
         IMAGE,
         str(project.policy) if project.policy else None,
         providers,
-        (str(project.folder), WORKDIR),
-        {FOLDER_LABEL: str(project.folder)},
+        str(project.folder),
+        WORKDIR,
     )
 
     sha = None
@@ -113,9 +127,9 @@ def create(project: Project, providers: list[str], say) -> None:
     if sha:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = Path(tmp) / "in.bundle"
-            _git(project.folder, "bundle", "create", "-q", str(bundle), "--all")
-            osh.exec_(project.sandbox, ["mkdir", "-p", OTG_DIR])
-            osh.upload(project.sandbox, str(bundle), f"{OTG_DIR}/in.bundle")
+            # Branches only: no stash, no remote-tracking refs.
+            _git(project.folder, "bundle", "create", "-q", str(bundle), "--branches", "HEAD")
+            osh.upload(project.sandbox, str(bundle), IN_BUNDLE)
     name = _git(project.folder, "config", "user.name", check=False).stdout.strip() or "openshell-tg"
     email = _git(project.folder, "config", "user.email", check=False).stdout.strip() or "agent@openshell-tg.invalid"
     osh.exec_(project.sandbox, ["sh", "-c", _restore_history_script(sha, f"{name} (agent)", email)])
@@ -135,15 +149,20 @@ def _wait_while_busy(name: str, say, timeout: float = 600) -> str | None:
     return phase
 
 
-def ensure_running(project: Project, providers: list[str], say) -> bool:
+def ensure_running(project: Project, providers: list[str], say, confirm) -> bool:
     """Create or start the sandbox. Returns True if it was just created."""
     phase = _wait_while_busy(project.sandbox, say)
     if phase is None:
-        create(project, providers, say)
+        create(project, providers, say, confirm)
         return True
     if phase != "Ready":
         say(m.t("up_starting"))
         osh.start(project.sandbox)
+    if osh.exec_(project.sandbox, ["test", "-f", RESTORED], timeout=30, check=False).returncode != 0:
+        raise SandboxError(m.t("copy_incomplete"))
+    missing = [p for p in providers if p not in osh.attached_providers(project.sandbox)]
+    for provider in missing:
+        osh.attach_provider(project.sandbox, provider)
     return False
 
 
@@ -166,11 +185,17 @@ def pull(project: Project) -> list[tuple[str, int]]:
         raise SandboxError(m.t("pull_not_running"))
     if not is_git(project.folder):
         raise SandboxError(m.t("pull_not_git"))
-    osh.exec_(project.sandbox, ["sh", "-c",
-              f"mkdir -p {OTG_DIR} && cd {WORKDIR} && git bundle create -q {OTG_DIR}/out.bundle --branches"])
+    current = _git(project.folder, "branch", "--show-current", check=False).stdout.strip()
+    if current.startswith("otg/"):
+        raise SandboxError(m.t("pull_on_otg_branch", branch=current))
+    made = osh.exec_(project.sandbox, ["sh", "-c",
+                     f"cd {WORKDIR} && git for-each-ref --format=x refs/heads | grep -q x "
+                     f"&& git bundle create -q {OUT_BUNDLE} --branches"], check=False)
+    if made.returncode != 0:
+        return []
     with tempfile.TemporaryDirectory() as tmp:
-        osh.download(project.sandbox, f"{OTG_DIR}/out.bundle", tmp + "/")
-        bundle = Path(tmp) / "out.bundle"
+        osh.download(project.sandbox, OUT_BUNDLE, tmp + "/")
+        bundle = Path(tmp) / "otg-out.bundle"
         heads = _git(project.folder, "bundle", "list-heads", str(bundle)).stdout.split()
         _git(project.folder, "fetch", "-q", str(bundle), "+refs/heads/*:refs/heads/otg/*")
     branches = sorted(ref.removeprefix("refs/heads/") for ref in heads if ref.startswith("refs/heads/"))
@@ -181,10 +206,10 @@ def pull(project: Project) -> list[tuple[str, int]]:
     return result
 
 
-def unsaved_commits(name: str, folder: Path) -> int:
-    """Commits in the sandbox that are neither on the host nor pushed anywhere."""
+def unsaved_commits(name: str, folder: Path) -> int | None:
+    """Commits in the sandbox that are neither on the host nor pushed. None if it cannot be checked."""
     if state(name) != "Ready":
-        return 0
+        return None
     script = (f"cd {WORKDIR} && for c in $(git for-each-ref --format='%(objectname)' refs/heads); do "
               "[ -z \"$(git branch -r --contains $c 2>/dev/null)\" ] && echo $c; done; true")
     out = osh.exec_(name, ["sh", "-c", script], check=False).stdout.split()

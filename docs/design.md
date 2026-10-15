@@ -130,7 +130,7 @@ flowchart TD
 | --- | --- | --- |
 | 1. Config | none | Questions: agent, subscription or API key, use GitHub. Writes `openshell-tg.yaml` and `openshell/policy.yaml` from templates. |
 | 2. Host | `test -w /dev/kvm`, `openshell status -o json`, `openshell gateway info -o json` | OpenShell missing: offer to run its official installer with `OPENSHELL_VERSION` pinned. Gateway config missing: write `gateway.toml` (vm driver, agent image, 4 vCPUs, 8 GiB), run `openshell-gateway config preflight`, restart the user service, enable linger. Existing config without the vm driver: stop and explain. |
-| 3. Telegram (once per machine) | Bot API | Ask the BotFather token (hidden input), call `getMe`, ask the user to send `/start`, take chat and user id from the first message. Encrypt token with `sudo systemd-creds encrypt`, install and start the service. One sudo prompt. |
+| 3. Telegram (once per machine) | Bot API | Ask the BotFather token (hidden input), call `getMe`, drop old updates, show a one-time code and wait for `/start <code>` in a private chat; take chat and user id from that message. Encrypt token with `sudo systemd-creds encrypt`, install and start the service. One sudo prompt. |
 | 4. Advisor | `openshell settings set --global --key agent_policy_proposals_enabled --value true --yes` | Global, so every sandbox gets `/AGENTS.md` and `policy.local`. |
 | 5. Providers | `openshell profile import -f`, `openshell provider list -o json`, `openshell provider create --name P --type P --credential VAR` | openshell-tg ships edited copies of OpenShell's example profiles (binaries match the agent image). The secret is read with hidden input and passed as an environment variable, never on argv. |
 | 6. Sandbox | `openshell sandbox get/create/start` | See section 5. |
@@ -162,7 +162,7 @@ sequenceDiagram
   C->>S: exec: git init, fetch bundle, point HEAD, reset index, switch to otg/work
 ```
 
-OpenShell's upload honours `.gitignore` but does not copy `.git`. The bundle restores history so the agent commits on top of it. Uncommitted host changes arrive as uncommitted changes on `otg/work`. A folder that is not a git repository is uploaded as is and `git init` creates a first commit inside the VM.
+OpenShell's upload honours `.gitignore` but does not copy `.git`. The folder is uploaded as `.` from inside it, so its contents land directly in `/sandbox/workspace`. The bundle holds branches and HEAD only (no stash, no remote-tracking refs) and restores history so the agent commits on top of it. If secret-looking files appear anywhere in branch history, `up` lists them and asks before copying. A marker file records a finished copy; a sandbox without it is reported, not used. Uncommitted host changes arrive as uncommitted changes on `otg/work`. A folder that is not a git repository is uploaded as is and `git init` creates a first commit inside the VM.
 
 ### 5.4 Code out
 
@@ -210,7 +210,7 @@ stateDiagram-v2
 
 Next steps after the machine is back:
 
-1. The service starts with the system and compares the boot time with the last one it saw. If it changed, it sends: "The home machine restarted. The agent in *my-project* stopped. Run `openshell-tg up` in that folder to continue."
+1. The service starts with the system and compares the kernel boot id with the last one it saw. If it changed, it sends: "The home machine restarted. The agent in *my-project* stopped. Run `openshell-tg up` in that folder to continue."
 2. `up` starts the same sandbox (nothing recreated, nothing copied again). `otg-agent` resumes the last conversation (`codex resume --last`, `claude --continue`, `opencode --continue`); if that fails it starts a new session, and the sandbox `AGENTS.md` tells the agent to check `git status` first.
 
 To verify during implementation: VM overlay disk survives an unclean host shutdown; each agent's resume works inside the sandbox.
@@ -235,12 +235,14 @@ sequenceDiagram
   S->>T: edit card: Approved, buttons removed
 ```
 
-- `rule get` prints text only; openshell-tg parses the `Chunk`, `Rule`, `Binary`, `Rationale`, `Security`, `Prover`, `Endpoints` and `Hits` lines. The rationale is written by the agent and may contain lines that imitate fields, so the parser fails closed: a chunk with a repeated or out-of-order field, or without `Endpoints`, is untrusted, and if the chunk count differs from the header line every chunk is untrusted. Untrusted chunks are shown as risky cards (no Approve button).
+- `rule get` prints text only; openshell-tg parses the `Chunk`, `Rule`, `Binary`, `Rationale`, `Security`, `Prover`, `Endpoints` and `Hits` lines. The rationale is written by the agent and may contain lines that imitate fields, so the parser fails closed: a chunk with a repeated or out-of-order field, or without `Endpoints`, is untrusted, and if the chunk count differs from the header line every chunk is untrusted. Untrusted chunks are shown as risky cards (no Approve button). The header is accepted only as the first line, any unrecognised line (including a rationale running over several lines) makes the chunk untrusted, and chunk ids must match `[A-Za-z0-9_.:-]{1,80}` before they appear in a command hint.
+- Approve re-reads `rule get --status pending` and proceeds only if every chunk on the card is still pending, trusted and shows the same rule, endpoints and programs. A card closes only when every `approve`/`reject` call succeeded.
+- The card shows `Binaries` (the programs the rule grants), and also `Binary` (the requester) when it differs.
 - Risky card: the chunk has `Security` notes (wildcards, private IPs, unusual ports). Only Reject and Details; approving needs `openshell rule approve` on the machine.
-- Expiry: 30 minutes without an answer, the service runs `openshell rule reject --reason "No answer within 30 minutes"`.
-- Duplicates: same sandbox, rule and binary while a card is open: no new card, the open card shows "×N".
+- Expiry: 30 minutes after the proposal was first seen (T0), even if the card could not be sent, the service runs `openshell rule reject --reason "No answer within 30 minutes"`. Unsent cards are retried on every poll.
+- Duplicates: same sandbox, rule, endpoints and programs while a low-risk card is open: no new card, the open card shows "×N". Risky or untrusted chunks always get their own card.
 - Reject reasons (buttons): "Too broad, ask for something narrower", "Not needed for this task", "This service is not allowed". The reason goes to the agent through `--reason`.
-- Revoke: `/rules` lists approved rules with a Remove button, which runs `openshell policy update NAME --remove-rule RULE --wait`.
+- Revoke: `/rules` lists the rules in the active policy (`openshell policy get NAME --full -o json`) with a Remove button, which runs `openshell policy update NAME --remove-rule RULE --wait`.
 - Only messages and button presses from the configured chat and user id are accepted; everything else is ignored.
 
 ## 7. Telegram interface

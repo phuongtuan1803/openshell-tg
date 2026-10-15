@@ -17,7 +17,7 @@ def wired(tmp_path, monkeypatch):
     monkeypatch.setattr(osh, "import_profile", lambda path, pid: calls.append(f"import:{pid}"))
     monkeypatch.setattr(osh, "create_provider", lambda name, prof, creds: calls.append(f"provider:{name}:{sorted(creds)}"))
     monkeypatch.setattr(sb, "state", lambda name: None)
-    monkeypatch.setattr(sb, "ensure_running", lambda proj, providers, say: calls.append(f"sandbox:{providers}") or True)
+    monkeypatch.setattr(sb, "ensure_running", lambda proj, providers, say, confirm: calls.append(f"sandbox:{providers}") or True)
     monkeypatch.setattr(sb, "attach", lambda proj: calls.append("attach") or 0)
     monkeypatch.setattr(cli, "prompt_secret", lambda q: "secret-value")
     return calls

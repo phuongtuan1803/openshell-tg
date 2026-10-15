@@ -120,6 +120,9 @@ class Store:
     def touch(self, name: str) -> None:
         self.db.execute("UPDATE sandboxes SET last_used=? WHERE name=?", (time.time(), name))
 
+    def mark_running(self, name: str) -> None:
+        self.db.execute("UPDATE sandboxes SET stopped_at=NULL WHERE name=?", (name,))
+
     def mark_stopped(self, name: str) -> None:
         self.db.execute("UPDATE sandboxes SET stopped_at=? WHERE name=?", (time.time(), name))
 
@@ -160,7 +163,7 @@ class Store:
     def group(self, req: "Request") -> list["Request"]:
         """Open requests shown on the same card (same sandbox and summary)."""
         rows = self.db.execute(
-            "SELECT rowid AS id, * FROM requests WHERE sandbox=? AND summary=? AND status='pending'",
+            "SELECT rowid AS id, * FROM requests WHERE sandbox=? AND summary=? AND status='pending' AND risky=0",
             (req.sandbox, req.summary),
         ).fetchall()
         return [_request(r) for r in rows]
@@ -172,7 +175,7 @@ class Store:
     def find_duplicate(self, sandbox: str, summary: str) -> Request | None:
         row = self.db.execute(
             "SELECT rowid AS id, * FROM requests WHERE sandbox=? AND summary=? AND status='pending' "
-            "AND message_id IS NOT NULL ORDER BY t0 LIMIT 1",
+            "AND risky=0 AND message_id IS NOT NULL ORDER BY t0 LIMIT 1",
             (sandbox, summary),
         ).fetchone()
         return _request(row) if row else None
@@ -185,7 +188,7 @@ class Store:
 
     def set_message(self, sandbox: str, chunk_id: str, message_id: int) -> None:
         self.db.execute(
-            "UPDATE requests SET message_id=?, t1=? WHERE sandbox=? AND chunk_id=?",
+            "UPDATE requests SET message_id=?, t1=COALESCE(t1, ?) WHERE sandbox=? AND chunk_id=?",
             (message_id, time.time(), sandbox, chunk_id),
         )
 

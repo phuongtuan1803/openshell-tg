@@ -30,13 +30,11 @@ DISK_WARN = 0.10
 
 
 def boot_time() -> str:
+    """An id that changes on every boot (kernel boot_id)."""
     try:
-        for line in Path("/proc/stat").read_text().splitlines():
-            if line.startswith("btime "):
-                return line.split()[1]
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
     except OSError:
-        pass
-    return ""
+        return ""
 
 
 class Bot:
@@ -106,16 +104,17 @@ class Bot:
             self.tick()
 
     def tick(self) -> None:
+        """One round of polling and housekeeping. A failing step never stops the service."""
         for box in self.store.sandboxes():
-            self.approvals.poll(box.name, box.agent)
+            _guard(self.approvals.poll, box.name, box.agent)
         now = time.time()
         if now - self._last_idle > IDLE_EVERY:
             self._last_idle = now
-            self.idle_check()
+            _guard(self.idle_check)
         if now - self._last_house > HOUSEKEEPING_EVERY:
             self._last_house = now
-            self.reminders()
-            self.disk_check()
+            _guard(self.reminders)
+            _guard(self.disk_check)
 
     def _back_online(self) -> None:
         since = self.offline_since
@@ -132,7 +131,11 @@ class Bot:
             query = update["callback_query"]
             if query.get("from", {}).get("id") != self.user_id:
                 return
-            toast = self.on_button(query.get("data", ""), query.get("message", {}).get("message_id"))
+            try:
+                toast = self.on_button(query.get("data", ""), query.get("message", {}).get("message_id"))
+            except Exception:
+                log.exception("button failed")
+                toast = m.t("toast_failed")
             try:
                 self.tg.answer(query["id"], toast)
             except TelegramError:
@@ -170,8 +173,8 @@ class Bot:
                              missing="" if folder_ok else m.t("folder_missing")))
             row = []
             if phase == "Ready":
-                row.append((m.t("btn_stop") + " " + _short(box.name), f"stop:{box.id}"))
-            row.append((m.t("btn_delete") + " " + _short(box.name), f"del:{box.id}"))
+                row.append((m.t("btn_stop") + " " + _short(box.name), f"stop:{box.name}"))
+            row.append((m.t("btn_delete") + " " + _short(box.name), f"del:{box.name}"))
             buttons.append(row)
         self.tg.send(self.chat_id, "\n\n".join(lines), buttons)
 
@@ -215,11 +218,11 @@ class Bot:
                 continue
             lines = [m.t("rules_title", sandbox=html.escape(box.name))]
             buttons = []
-            for chunk in rules[:30]:
-                lines.append(f"• <code>{html.escape(chunk.endpoints)}</code> ({html.escape(chunk.rule)})")
+            for rule, endpoints in rules[:30]:
+                lines.append(f"• <code>{html.escape(endpoints[:200])}</code> ({html.escape(rule[:60])})")
                 token = secrets.token_hex(4)
-                self.store.put(f"rm:{token}", f"{box.name}\n{chunk.rule}")
-                buttons.append([(m.t("btn_remove") + " " + chunk.endpoints[:40], f"rm:{token}")])
+                self.store.put(f"rm:{token}", f"{box.name}\n{rule}")
+                buttons.append([(m.t("btn_remove") + " " + (endpoints or rule)[:40], f"rm:{token}")])
             self.tg.send(self.chat_id, "\n".join(lines), buttons)
 
     # buttons
@@ -236,7 +239,7 @@ class Bot:
             ok = self.approvals.remove(name, rule)
             self.store.db.execute("DELETE FROM meta WHERE key=?", (f"rm:{arg}",))
             return m.t("toast_removed") if ok else m.t("toast_failed")
-        box = self.store.sandbox_by_id(int(arg)) if arg.isdigit() else None
+        box = self.store.sandbox(arg)
         if box is None:
             return m.t("toast_handled")
         if action == "stop":
@@ -248,9 +251,10 @@ class Bot:
                 return m.t("toast_failed")
         if action == "del":
             unsaved = sb.unsaved_commits(box.name, Path(box.folder))
-            key = "confirm_delete_unsaved" if unsaved else "confirm_delete"
-            self.say(key, [[(m.t("btn_delete_yes"), f"delyes:{box.id}"), (m.t("btn_cancel"), f"cancel:{box.id}")]],
-                     sandbox=html.escape(box.name), count=unsaved)
+            key = ("confirm_delete_unknown" if unsaved is None
+                   else "confirm_delete_unsaved" if unsaved else "confirm_delete")
+            self.say(key, [[(m.t("btn_delete_yes"), f"delyes:{box.name}"), (m.t("btn_cancel"), f"cancel:{box.name}")]],
+                     sandbox=html.escape(box.name), count=unsaved or 0)
             return None
         if action == "delyes":
             try:
@@ -288,10 +292,14 @@ class Bot:
             except osh.OpenShellError:
                 continue
             if phase is None:
-                self.store.forget_sandbox(box.name)
+                # Double-check with the full list before forgetting a sandbox.
+                if box.name not in {s.get("name") for s in osh.sandboxes()}:
+                    self.store.forget_sandbox(box.name)
                 continue
-            if phase != "Ready":
-                if not box.stopped_at:
+            if phase == "Ready":
+                self.store.mark_running(box.name)
+            else:
+                if phase == "Stopped" and not box.stopped_at:
                     self.store.mark_stopped(box.name)
                 self.store.put(f"alive:{box.name}", "0")
                 continue
@@ -318,7 +326,7 @@ class Bot:
                 continue
             key = "remind_missing" if missing else "remind_stopped"
             days = int((now - (box.stopped_at or now)) // 86400)
-            self.say(key, [[(m.t("btn_delete"), f"del:{box.id}"), (m.t("btn_keep"), f"keep:{box.id}")]],
+            self.say(key, [[(m.t("btn_delete"), f"del:{box.name}"), (m.t("btn_keep"), f"keep:{box.name}")]],
                      sandbox=html.escape(box.name), folder=html.escape(box.folder), days=days)
             self.store.mark_reminded(box.name)
 
@@ -331,6 +339,13 @@ class Bot:
             return
         self.say("disk_low", percent=int(100 - usage.free * 100 / usage.total))
         self.store.put("disk_warned", str(time.time()))
+
+
+def _guard(func, *args) -> None:
+    try:
+        func(*args)
+    except Exception:
+        log.exception("%s failed", getattr(func, "__name__", func))
 
 
 def _phase(phase: str) -> str:

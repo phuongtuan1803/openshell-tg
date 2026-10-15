@@ -105,7 +105,7 @@ def test_expiry_rejects(store, tg, gateway, monkeypatch):
     gateway["pending"] = [chunk("c1")]
     a = Approvals(store, tg, 1)
     a.poll("sb")
-    store.db.execute("UPDATE requests SET t1=t1-?", (approval.EXPIRY + 5,))
+    store.db.execute("UPDATE requests SET t0=t0-?", (approval.EXPIRY + 5,))
     a.poll("sb")
     assert gateway["calls"][0][0] == "reject"
     assert store.request("sb", "c1").status == "expired"
@@ -127,3 +127,66 @@ def test_html_is_escaped(store, tg, gateway):
     gateway["pending"] = [c]
     Approvals(store, tg, 1).poll("sb")
     assert "&lt;b&gt;click&lt;/b&gt; &amp; go" in tg.sent[0][1]
+
+
+def test_card_shows_granted_programs(store, tg, gateway):
+    c = chunk("c1")
+    c.binaries = "/usr/bin/python3, /usr/bin/curl"
+    c.binary = "/usr/bin/pip"
+    gateway["pending"] = [c]
+    Approvals(store, tg, 1).poll("sb")
+    text = tg.sent[0][1]
+    assert "/usr/bin/python3, /usr/bin/curl" in text and "/usr/bin/pip" in text
+
+
+def test_risky_chunk_never_joins_a_low_risk_card(store, tg, gateway):
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+    bad = chunk("c2")
+    bad.trusted = False
+    gateway["pending"].append(bad)
+    a.poll("sb")
+    assert len(tg.sent) == 2
+    a.on_button(f"ok:{store.request('sb', 'c1').id}")
+    assert gateway["calls"] == [("approve", "c1")]
+
+
+def test_approve_refuses_when_proposal_changed(store, tg, gateway):
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+    gateway["pending"] = [chunk("c1", endpoints="evil.com:443")]
+    assert a.on_button(f"ok:{store.request('sb', 'c1').id}") == "The request changed. Check the new card."
+    assert gateway["calls"] == []
+
+
+def test_failed_decision_keeps_card_open(store, tg, gateway, monkeypatch):
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+
+    def fail(name, cid):
+        raise osh.OpenShellError(["rule", "approve"], 1, "FAILED_PRECONDITION")
+
+    monkeypatch.setattr(osh, "approve", fail)
+    edits_before = len(tg.edits)
+    assert a.on_button(f"ok:{store.request('sb', 'c1').id}") is not None
+    assert store.request("sb", "c1").status == "pending"
+    assert len(tg.edits) == edits_before
+
+
+def test_unsent_card_is_retried_and_still_expires(store, tg, gateway, monkeypatch):
+    from openshell_tg.telegram import TelegramError
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    real_send = tg.send
+    monkeypatch.setattr(tg, "send", lambda *a, **k: (_ for _ in ()).throw(TelegramError("down")))
+    a.poll("sb")
+    assert store.request("sb", "c1").message_id is None
+    monkeypatch.setattr(tg, "send", real_send)
+    a.poll("sb")
+    assert store.request("sb", "c1").message_id is not None
+    store.db.execute("UPDATE requests SET t0=t0-?, message_id=NULL", (approval.EXPIRY + 5,))
+    a.poll("sb")
+    assert store.request("sb", "c1").status == "expired"

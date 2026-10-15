@@ -25,8 +25,8 @@ EN = {
     "pick_one": "Please type one of: {options}",
     "ask_language": "Language for messages / Ngôn ngữ:",
     "ask_bot_token": "Paste the Telegram bot token from @BotFather (hidden):",
-    "send_start": "Open Telegram and send /start to @{bot}. Waiting…",
-    "no_start": "No /start message arrived. Run openshell-tg up again when you are ready.",
+    "send_start": "Open Telegram and send this to @{bot}:  /start {code}\nWaiting…",
+    "no_start": "The /start message with the code did not arrive. Run openshell-tg up again when you are ready.",
     "bad_bot_token": "Telegram did not accept that bot token. Copy it again from @BotFather and retry.",
     "sudo_once": "Installing the approval service. Your computer password is needed once.",
     "sudo_failed": "Could not install the approval service. {detail}",
@@ -156,6 +156,15 @@ EN = {
     "toast_risky": "Approve this one on the machine.",
     "toast_removed": "Removed",
     "toast_stopped": "Stopped",
+    "card_requester": "Asked by: <code>{binary}</code> (differs from the programs above)",
+    "card_check_machine": "Check it on the machine: <code>openshell rule get {sandbox} --status pending</code>",
+    "toast_changed": "The request changed. Check the new card.",
+    "confirm_delete_unknown": "Delete <b>{sandbox}</b>? It is stopped, so I cannot check for commits that are not saved elsewhere. Run openshell-tg pull first if unsure.",
+    "unsaved_unknown": "The sandbox is stopped, so unsaved commits cannot be checked. Run openshell-tg up and openshell-tg pull first if unsure.",
+    "secret_history": "These secret-looking files are in the git history and would be copied into the sandbox: {files}. Continue anyway?",
+    "copy_incomplete": "Copying the folder into the sandbox did not finish. Run openshell-tg destroy, then openshell-tg up.",
+    "pull_on_otg_branch": "You are on branch {branch}. Switch to another branch first, then run openshell-tg pull.",
+    "git_failed": "A git step failed. Details: {log}",
 }
 
 VI = {
@@ -173,8 +182,8 @@ VI = {
     "pick_one": "Hãy gõ một trong: {options}",
     "ask_language": "Language for messages / Ngôn ngữ:",
     "ask_bot_token": "Dán token bot Telegram lấy từ @BotFather (không hiện ra):",
-    "send_start": "Mở Telegram và gửi /start cho @{bot}. Đang chờ…",
-    "no_start": "Chưa nhận được /start. Khi sẵn sàng, chạy lại openshell-tg up.",
+    "send_start": "Mở Telegram và gửi cho @{bot}:  /start {code}\nĐang chờ…",
+    "no_start": "Chưa nhận được /start kèm mã. Khi sẵn sàng, chạy lại openshell-tg up.",
     "bad_bot_token": "Telegram không nhận token này. Chép lại từ @BotFather rồi thử lại.",
     "sudo_once": "Đang cài dịch vụ duyệt. Cần nhập mật khẩu máy một lần.",
     "sudo_failed": "Không cài được dịch vụ duyệt. {detail}",
@@ -299,6 +308,15 @@ VI = {
     "toast_risky": "Yêu cầu này cần duyệt trên máy.",
     "toast_removed": "Đã gỡ",
     "toast_stopped": "Đã dừng",
+    "card_requester": "Chương trình xin: <code>{binary}</code> (khác với danh sách trên)",
+    "card_check_machine": "Xem trên máy: <code>openshell rule get {sandbox} --status pending</code>",
+    "toast_changed": "Yêu cầu đã thay đổi. Xem thẻ mới.",
+    "confirm_delete_unknown": "Xóa <b>{sandbox}</b>? Sandbox đang dừng nên không kiểm tra được commit chưa lưu. Nếu không chắc, chạy openshell-tg pull trước.",
+    "unsaved_unknown": "Sandbox đang dừng nên không kiểm tra được commit chưa lưu. Nếu không chắc, chạy openshell-tg up rồi openshell-tg pull trước.",
+    "secret_history": "Lịch sử git có các file trông như khóa và sẽ bị chép vào sandbox: {files}. Vẫn tiếp tục?",
+    "copy_incomplete": "Chưa chép xong thư mục vào sandbox. Chạy openshell-tg destroy rồi openshell-tg up.",
+    "pull_on_otg_branch": "Bạn đang ở nhánh {branch}. Chuyển sang nhánh khác rồi chạy lại openshell-tg pull.",
+    "git_failed": "Một bước git bị lỗi. Chi tiết: {log}",
 }
 
 LANGUAGES = {"en": EN, "vi": VI}

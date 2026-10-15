@@ -28,7 +28,7 @@ class OpenShellError(Exception):
 
     @property
     def not_found(self) -> bool:
-        return "NotFound" in self.stderr or "not found" in self.stderr.lower()
+        return "NotFound" in self.stderr
 
 
 def _env(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -39,12 +39,16 @@ def _env(extra: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def run(args: list[str], *, env: dict[str, str] | None = None, timeout: float = 600,
-        check: bool = True) -> subprocess.CompletedProcess:
+        check: bool = True, cwd: str | None = None) -> subprocess.CompletedProcess:
+    """Run openshell. Every failure, including a timeout, raises OpenShellError."""
     log.debug("openshell %s", " ".join(args))
-    proc = subprocess.run(
-        [BINARY, *args], capture_output=True, text=True, env=_env(env), timeout=timeout,
-        stdin=subprocess.DEVNULL,
-    )
+    try:
+        proc = subprocess.run(
+            [BINARY, *args], capture_output=True, text=True, env=_env(env), timeout=timeout,
+            stdin=subprocess.DEVNULL, cwd=cwd,
+        )
+    except subprocess.TimeoutExpired:
+        raise OpenShellError(args, 124, f"timed out after {timeout:.0f} s") from None
     if check and proc.returncode != 0:
         log.warning("openshell %s -> %s: %s", args[:3], proc.returncode, proc.stderr.strip()[-2000:])
         raise OpenShellError(args, proc.returncode, proc.stderr)
@@ -53,7 +57,10 @@ def run(args: list[str], *, env: dict[str, str] | None = None, timeout: float = 
 
 def run_json(args: list[str], **kw) -> dict:
     out = run([*args, "-o", "json"], **kw).stdout
-    return json.loads(out) if out.strip() else {}
+    try:
+        return json.loads(out) if out.strip() else {}
+    except ValueError:
+        raise OpenShellError(args, 0, f"unexpected output: {out[:200]}") from None
 
 
 def interactive(args: list[str]) -> int:
@@ -127,17 +134,24 @@ def sandboxes() -> list[dict]:
     return run_json(["sandbox", "list"], timeout=60).get("sandboxes", [])
 
 
-def create(name: str, image: str, policy: str | None, providers: list[str],
-           upload: tuple[str, str], labels: dict[str, str]) -> dict:
+def create(name: str, image: str, policy: str | None, providers: list[str], folder: str, dest: str) -> dict:
+    # Uploading "." from inside the folder puts its contents directly in dest;
+    # a named directory would land in dest/<basename>.
     args = ["sandbox", "create", "--name", name, "--from", image, "--no-auto-providers",
-            "--upload", f"{upload[0]}:{upload[1]}"]
+            "--upload", f".:{dest}"]
     if policy:
         args += ["--policy", policy]
     for p in providers:
         args += ["--provider", p]
-    for k, v in labels.items():
-        args += ["--label", f"{k}={v}"]
-    return run_json(args, timeout=1800)
+    return run_json(args, timeout=1800, cwd=folder)
+
+
+def attached_providers(name: str) -> set[str]:
+    return {p["name"] for p in run_json(["sandbox", "provider", "list", name]).get("providers", [])}
+
+
+def attach_provider(name: str, provider: str) -> None:
+    run(["sandbox", "provider", "attach", name, provider, "--wait"], timeout=120)
 
 
 def start(name: str) -> None:
@@ -161,7 +175,7 @@ def exec_(name: str, command: list[str], workdir: str | None = None, timeout: in
 
 
 def attach(name: str, command: list[str], workdir: str) -> int:
-    return interactive(["sandbox", "exec", name, "--tty", "--workdir", workdir, "--", *command])
+    return interactive(["sandbox", "exec", name, "--tty", "--timeout", "0", "--workdir", workdir, "--", *command])
 
 
 def upload(name: str, local: str, dest: str) -> None:
@@ -177,7 +191,8 @@ def download(name: str, path: str, dest: str) -> None:
 RULE_FIELDS = ("Chunk", "Status", "Rule", "Binary", "Confidence", "Rationale", "Security",
                "Prover", "Application", "Candidate", "Endpoints", "Binaries", "Hits")
 _FIELD = re.compile(r"^  (" + "|".join(RULE_FIELDS) + r"):(?: (.*))?$")
-_HEADER = re.compile(r"^Network Rules:\s+\(version (\d+), (\d+) chunks?\)")
+_HEADER = re.compile(r"^Network Rules:\s+\(version (\d+), (\d+) chunks?\)\s*$")
+CHUNK_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,80}$")
 
 
 @dataclass
@@ -201,55 +216,74 @@ class Chunk:
     def risky(self) -> bool:
         return bool(self.security) or not self.trusted
 
+    @property
+    def grants(self) -> str:
+        """Programs the rule would allow: Binaries from the proposed rule, else the requester."""
+        return self.binaries or self.binary
+
     def summary(self) -> str:
-        return f"{self.rule}|{self.endpoints}|{self.binary or self.binaries}"
+        return f"{self.rule}|{self.endpoints}|{self.grants}"
+
+    def shown(self) -> dict:
+        """The fields a card displays. Approval requires these to be unchanged."""
+        return {"rule": self.rule, "endpoints": self.endpoints, "grants": self.grants,
+                "binary": self.binary}
 
 
 def parse_rules(text: str) -> list[Chunk]:
-    """Parse `openshell rule get` text output.
+    """Parse `openshell rule get` text output, failing closed.
 
-    Agent-written text (rationale) can contain newlines that imitate field
-    lines. A chunk whose fields repeat or come out of the documented order is
-    marked untrusted, and if the number of chunks differs from the header,
-    every chunk is untrusted. Untrusted chunks are never approvable from
-    Telegram.
+    The rationale is agent-written and printed raw, so it can contain line
+    breaks and lines that imitate fields, chunks or the header. Therefore:
+    the header is accepted only as the first non-empty line; any other
+    unrecognised line, a repeated or out-of-order field, a missing Endpoints
+    line or an unusual chunk id makes the chunk untrusted; and a chunk count
+    that differs from the header makes every chunk untrusted. Untrusted
+    chunks can never be approved from Telegram.
     """
     if text.strip().startswith("No network rules"):
         return []
     chunks: list[Chunk] = []
     current: Chunk | None = None
-    last_key: str | None = None
     expected: int | None = None
-    for line in text.splitlines():
+    poisoned = False
+    lines = text.splitlines()
+    first = next((i for i, line in enumerate(lines) if line.strip()), None)
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
         header = _HEADER.match(line)
         if header:
-            expected = int(header.group(2))
+            if i == first:
+                expected = int(header.group(2))
+            else:
+                poisoned = True
             continue
         match = _FIELD.match(line)
-        if match:
-            key, value = match.group(1), (match.group(2) or "").strip()
-            if key == "Chunk":
-                current = Chunk(id=value)
-                chunks.append(current)
-                last_key = key
-                continue
-            if current is None:
-                continue
-            order = [RULE_FIELDS.index(k) for k in current._seen]
-            if key in current._seen or (order and RULE_FIELDS.index(key) < max(order)):
+        if not match:
+            if current is not None:
                 current.trusted = False
-            current._seen.append(key)
-            attr = key.lower()
-            if hasattr(current, attr) and attr not in ("id", "trusted"):
-                setattr(current, attr, value)
-            last_key = key
-        elif current is not None and last_key in ("Rationale", "Security", "Prover") and line.strip():
-            attr = last_key.lower()
-            setattr(current, attr, (getattr(current, attr) + "\n" + line.strip()).strip())
+            else:
+                poisoned = True
+            continue
+        key, value = match.group(1), (match.group(2) or "").strip()
+        if key == "Chunk":
+            current = Chunk(id=value, trusted=bool(CHUNK_ID.match(value)))
+            chunks.append(current)
+            continue
+        if current is None:
+            poisoned = True
+            continue
+        order = [RULE_FIELDS.index(k) for k in current._seen]
+        if key in current._seen or (order and RULE_FIELDS.index(key) < max(order)):
+            current.trusted = False
+        current._seen.append(key)
+        if key not in current._seen[:-1]:
+            setattr(current, key.lower(), value)
     for chunk in chunks:
-        if not chunk.endpoints or not chunk.id:
+        if not chunk.endpoints:
             chunk.trusted = False
-    if expected is not None and expected != len(chunks):
+    if poisoned or expected is None or expected != len(chunks):
         for chunk in chunks:
             chunk.trusted = False
     return chunks
@@ -265,6 +299,12 @@ def approve(name: str, chunk_id: str) -> None:
 
 def reject(name: str, chunk_id: str, reason: str) -> None:
     run(["rule", "reject", name, "--chunk-id", chunk_id, "--reason", reason], timeout=120)
+
+
+def network_policies(name: str) -> dict:
+    """The sandbox's active network rules, keyed by rule name (from the policy itself)."""
+    data = run_json(["policy", "get", name, "--full"], timeout=60)
+    return (data.get("policy") or {}).get("network_policies") or {}
 
 
 def remove_rule(name: str, rule: str) -> None:

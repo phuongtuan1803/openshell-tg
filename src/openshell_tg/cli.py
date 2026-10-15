@@ -6,8 +6,8 @@ import argparse
 import getpass
 import hashlib
 import logging
+import subprocess
 import sys
-import time
 from pathlib import Path
 
 import yaml
@@ -113,7 +113,9 @@ def _policy_hash(proj: Project) -> str:
 
 def _confirm_destroy(store: Store, name: str, folder: Path) -> bool:
     unsaved = sb.unsaved_commits(name, folder)
-    if unsaved:
+    if unsaved is None:
+        say(m.t("unsaved_unknown"))
+    elif unsaved:
         say(m.t("unsaved_commits", count=unsaved))
     return ask(m.t("confirm_destroy_cli", sandbox=name), default=False)
 
@@ -137,6 +139,8 @@ def cmd_up(args) -> int:
         changed = []
         if known.agent != proj.agent:
             changed.append("agent")
+        if store.get(f"auth:{proj.sandbox}") not in (None, proj.auth):
+            changed.append("auth")
         if store.get(f"policy:{proj.sandbox}") not in (None, _policy_hash(proj)):
             changed.append(proj.policy.name)
         if changed:
@@ -144,10 +148,12 @@ def cmd_up(args) -> int:
             if ask(m.t("ask_rebuild"), default=False) and _confirm_destroy(store, proj.sandbox, proj.folder):
                 sb.destroy(proj.sandbox)
 
-    created = sb.ensure_running(proj, providers, say)
+    # Register first, so the approval service polls the sandbox even if a later step fails.
     store.save_sandbox(proj.sandbox, str(proj.folder), proj.agent, proj.idle_stop)
+    created = sb.ensure_running(proj, providers, say, ask)
     if created or store.get(f"policy:{proj.sandbox}") is None:
         store.put(f"policy:{proj.sandbox}", _policy_hash(proj))
+        store.put(f"auth:{proj.sandbox}", proj.auth)
 
     say(m.t("attaching", agent=proj.agent))
     if created and proj.auth == "subscription":
@@ -247,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
     except osh.OpenShellError as exc:
         log.error("%s", exc)
         say(m.t("openshell_failed", log=state_dir() / "openshell-tg.log"))
+    except subprocess.CalledProcessError as exc:
+        log.error("%s: %s", exc, (exc.stderr or "").strip()[-1000:])
+        say(m.t("git_failed", log=state_dir() / "openshell-tg.log"))
     except FileNotFoundError as exc:
         log.error("%s", exc)
         say(m.t("missing_program", program=exc.filename))

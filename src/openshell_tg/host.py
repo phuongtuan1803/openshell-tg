@@ -6,6 +6,7 @@ from __future__ import annotations
 import getpass
 import os
 import pwd
+import secrets
 import shutil
 import subprocess
 import sys
@@ -135,20 +136,27 @@ def service_installed() -> bool:
 
 
 def detect_chat(token: str, say, wait: int = 300) -> tuple[dict, int, int]:
-    """Validate the token and wait for the user's /start. Returns (bot, chat_id, user_id)."""
+    """Validate the token and wait for `/start <code>` from the owner. Returns (bot, chat_id, user_id).
+
+    The one-time code shown in the terminal proves the Telegram account belongs
+    to the person at the keyboard, not to whoever messages the bot first.
+    """
     tg = Telegram(token)
     try:
         bot = tg.get_me()
     except TelegramError:
         raise SetupError(m.t("bad_bot_token")) from None
-    say(m.t("send_start", bot=bot.get("username", "")))
     offset = None
+    for update in tg.get_updates(None, timeout=0):  # drop anything sent before now
+        offset = update["update_id"] + 1
+    code = f"{secrets.randbelow(10**6):06d}"
+    say(m.t("send_start", bot=bot.get("username", ""), code=code))
     deadline = time.time() + wait
     while time.time() < deadline:
         for update in tg.get_updates(offset, timeout=20):
             offset = update["update_id"] + 1
             msg = update.get("message") or {}
-            if msg.get("text", "").startswith("/start") and msg.get("chat", {}).get("type") == "private":
+            if msg.get("chat", {}).get("type") == "private" and msg.get("text", "").split() == ["/start", code]:
                 tg.get_updates(offset, timeout=0)  # acknowledge, so the service starts clean
                 return bot, msg["chat"]["id"], msg["from"]["id"]
     raise SetupError(m.t("no_start"))
@@ -163,6 +171,7 @@ After=network-online.target
 [Service]
 User={user}
 Environment=HOME={home}
+Environment=PATH={os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")}
 ExecStart={sys.executable} -m openshell_tg serve
 LoadCredentialEncrypted=bot-token:{CRED_FILE}
 Restart=always
