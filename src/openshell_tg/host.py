@@ -86,6 +86,22 @@ overlay_disk_mib = {disk_mib}
 """
 
 
+def diagnostics(journal_lines: int = 60) -> str:
+    """Host facts that explain a sandbox that never became ready: memory, VMs and the gateway journal."""
+    parts = []
+    for title, cmd in (
+        ("memory", ["free", "-m"]),
+        ("vm processes", ["sh", "-c", "ps -eo pid,rss,etime,args | grep -iE 'qemu|crosvm|firecracker|libkrun|cloud-hypervisor|openshell' | grep -v grep | cut -c1-200"]),
+        ("gateway journal", ["journalctl", "--user", "-u", "openshell-gateway", "-n", str(journal_lines), "--no-pager", "-o", "cat"]),
+    ):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            out = "(unavailable)"
+        parts.append(f"--- {title}\n{out[-4000:]}")
+    return "\n".join(parts)
+
+
 def _gateway_connected() -> bool:
     try:
         return osh.status().get("status") == "connected"

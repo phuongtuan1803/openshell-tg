@@ -12,7 +12,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import __version__, osh
+from . import __version__, host, osh
 from . import messages as m
 from .project import Project
 
@@ -130,6 +130,10 @@ def create(project: Project, providers: list[str], say, confirm) -> None:
         try:
             log.error("sandbox state after the failed create: %s", json.dumps(osh.sandbox(project.sandbox))[:6000])
         except (osh.OpenShellError, TypeError, ValueError):
+            pass
+        try:
+            log.error("host state after the failed create:\n%s", host.diagnostics())
+        except Exception:  # diagnostics must never hide the real error
             pass
         try:
             osh.delete(project.sandbox)
