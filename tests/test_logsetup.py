@@ -7,8 +7,8 @@ from openshell_tg.logsetup import redact
 def test_redacts_credentials():
     token = "123456789:" + "A" * 35
     text = redact(f"POST https://api.telegram.org/bot{token}/getMe token={token} sk-ant-abc123456789012345 "
-                  "Authorization: Bearer abcdefghijkl ghp_" + "x" * 30 + " password: hunter2")
-    for secret in (token, "sk-ant-abc", "abcdefghijkl", "ghp_x", "hunter2"):
+                  "Authorization: Bearer abcdefghijkl ghp_" + "x" * 30 + " password: hunter2hunter2")
+    for secret in (token, "sk-ant-abc", "abcdefghijkl", "ghp_x", "hunter2hunter2"):
         assert secret not in text
     assert text.count("[hidden]") >= 5
 
@@ -35,3 +35,11 @@ def test_setup_writes_role_and_hides_secrets(monkeypatch):
         for h in before[0]:
             root.addHandler(h)
         root.setLevel(before[1])
+
+
+def test_redacts_name_value_forms_but_not_prose():
+    assert "abc123456789" not in redact("GITHUB_TOKEN=abc123456789")
+    assert "xyz987654321" not in redact('{"token": "xyz987654321"}')
+    assert "supersecret1" not in redact("password: supersecret1")
+    assert redact("token: expired") == "token: expired"
+    assert redact("credentials: not found") == "credentials: not found"

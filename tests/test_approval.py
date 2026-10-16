@@ -280,3 +280,35 @@ def test_rejection_tells_the_agent_the_reason_at_once(store, tg, gateway):
     text = gateway["told"][0]
     assert "rejected" in text and "pypi.org:443" in text and "Do not repeat" in text
     assert approval.m.t("reason_broad", lang="en") in text
+
+
+def test_failed_nudge_is_retried_then_dropped(store, tg, gateway, monkeypatch):
+    monkeypatch.setattr(approval, "NUDGE_DELAY", 0)
+    gateway["running"] = True
+    attempts = []
+    monkeypatch.setattr(sb, "tell_agent", lambda name, text: attempts.append(text) and False)
+    a = _tap_approve(store, tg, gateway)
+    for _ in range(5):
+        a.poll("sb")
+    assert len(attempts) == 3
+    assert store.get("nudge:sb") == ""
+
+
+def test_corrupt_nudge_does_not_stop_polling(store, tg, gateway):
+    store.put("nudge:sb", "{not json")
+    gateway["pending"] = [chunk("c1")]
+    Approvals(store, tg, 1).poll("sb")
+    assert len(tg.sent) == 1
+
+
+def test_deleted_sandbox_closes_its_open_cards(store, tg, gateway, monkeypatch):
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+
+    def gone(name, status="pending"):
+        raise osh.OpenShellError(["rule", "get"], 1, "status: NotFound, message: \"sandbox not found\"")
+
+    monkeypatch.setattr(osh, "rules", gone)
+    a.poll("sb")
+    assert store.open_requests() == []

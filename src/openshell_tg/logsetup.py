@@ -26,7 +26,8 @@ _SECRETS = (
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"),
-    re.compile(r"(?i)\b((?:api[_-]?key|token|secret|password|credential)[A-Za-z_]*\s*[=:]\s*)\S+"),
+    # NAME=value, NAME: value and "name": "value" for names that mention a credential; short words stay readable.
+    re.compile(r"""(?i)([A-Za-z0-9_.-]*(?:api[_-]?key|token|secret|passw(?:or)?d|credential)[A-Za-z0-9_]*["']?\s*[=:]\s*["']?)[^\s"',}]{8,}"""),
 )
 MASK = "[hidden]"
 

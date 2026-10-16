@@ -152,6 +152,7 @@ def _box(store, name="sb1"):
 def test_quiet_agent_after_work_is_reported_once(bot, tg, store, monkeypatch):
     _box(store)
     quiet = {"s": 5}
+    monkeypatch.setattr(sb, "state", lambda name: "Ready")
     monkeypatch.setattr(sb, "agent_idle_seconds", lambda name: quiet["s"])
     bot.watch_agent("sb1")
     assert tg.sent == []
@@ -181,3 +182,21 @@ def test_screen_when_agent_not_running(bot, tg, store, monkeypatch):
     monkeypatch.setattr(sb, "screen", lambda name: None)
     bot.handle(message("/screen"))
     assert "No agent is running" in tg.sent[0][1]
+
+
+def test_card_with_a_long_address_list_cannot_be_approved(store, tg, monkeypatch):
+    from openshell_tg import approval
+    long_list = "pypi.org:443, " + "x" * 400 + ", evil.example:443"
+    chunk = osh.Chunk(id="c9", status="pending", rule="allow_x", binary="/usr/bin/python3", endpoints=long_list)
+    monkeypatch.setattr(osh, "rules", lambda name, status="pending": [chunk] if status == "pending" else [])
+    approval.Approvals(store, tg, 10).poll("sb1")
+    _, text, buttons = tg.sent[0]
+    assert "too long" in text and [b[0] for b in buttons[0]] == ["Reject", "Details"]
+
+
+def test_idle_check_keeps_a_sandbox_that_up_is_still_creating(bot, store, monkeypatch):
+    _box(store)
+    monkeypatch.setattr(sb, "state", lambda name: None)
+    monkeypatch.setattr(osh, "sandboxes", lambda: [])
+    bot.idle_check()
+    assert store.sandbox("sb1") is not None

@@ -18,6 +18,7 @@ from . import __version__, host, osh
 from . import messages as m
 from . import sandbox as sb
 from .approval import Approvals
+from .logsetup import redact
 from .store import Store
 from .telegram import Telegram, TelegramError
 
@@ -26,6 +27,7 @@ log = logging.getLogger(__name__)
 COMMANDS = ("help", "list", "status", "rules", "screen")
 IDLE_EVERY = 600
 WATCH_EVERY = 30
+CREATE_GRACE = 35 * 60  # a sandbox registered by `up` this recently may still be being created
 QUIET_AFTER = 120  # agent silent this long after working: tell the owner
 WORKING_UNDER = 30  # terminal changed within this many seconds counts as working
 HOUSEKEEPING_EVERY = 3600
@@ -100,14 +102,18 @@ class Bot:
                     self.offline_since = time.time()
                 updates = []
                 time.sleep(5)
+            except Exception:  # the service must outlive any single failure
+                log.exception("polling failed")
+                updates = []
+                time.sleep(5)
             for update in updates:
                 offset = update["update_id"] + 1
-                self.store.put("offset", str(offset))
                 try:
+                    self.store.put("offset", str(offset))
                     self.handle(update)
                 except Exception:  # one bad update must not stop the service
                     log.exception("update failed")
-            self.tick()
+            _guard(self.tick)
 
     def tick(self) -> None:
         """One round of polling and housekeeping. A failing step never stops the service."""
@@ -216,16 +222,19 @@ class Bot:
 
     def watch_agent(self, name: str) -> None:
         """Tell the owner once when an agent that was working has gone quiet: it may be asking a question."""
+        if sb.state(name) != "Ready":
+            self.store.put(f"working:{name}", "0")
+            return
         quiet = sb.agent_idle_seconds(name)
         if quiet is None:
             self.store.put(f"working:{name}", "0")
         elif quiet < WORKING_UNDER:
             self.store.put(f"working:{name}", "1")
-        elif quiet >= QUIET_AFTER and self.store.get(f"working:{name}") == "1":
+        elif (quiet >= QUIET_AFTER and self.store.get(f"working:{name}") == "1"
+              and not any(r.sandbox == name for r in self.store.open_requests())):
             self.store.put(f"working:{name}", "0")
-            if not any(r.sandbox == name for r in self.store.open_requests()):
-                log.info("agent quiet: sandbox=%s quiet_for=%s", name, m.duration(quiet))
-                self.say("agent_waiting", name=html.escape(name), quiet=m.duration(quiet))
+            log.info("agent quiet: sandbox=%s quiet_for=%s", name, m.duration(quiet))
+            self.say("agent_waiting", name=html.escape(name), quiet=m.duration(quiet))
 
     def cmd_screen(self, args) -> None:
         boxes = self.store.sandboxes()
@@ -240,8 +249,12 @@ class Bot:
             if text is None:
                 self.say("screen_none", name=name)
                 continue
-            body = html.escape(text) if text.strip() else m.t("screen_empty")
-            self.tg.send(self.chat_id, f"<b>{m.t('screen_title', name=name)}</b>\n<pre>{body}</pre>\n{m.t('screen_warn')}")
+            body = html.escape(redact(text)) if text.strip() else m.t("screen_empty")
+            try:
+                self.tg.send(self.chat_id, f"<b>{m.t('screen_title', name=name)}</b>\n<pre>{body}</pre>\n{m.t('screen_warn')}")
+            except TelegramError as exc:
+                log.warning("send screen failed: %s", exc)
+                self.say("screen_failed", name=name)
 
     def cmd_rules(self, args) -> None:
         boxes = self.store.sandboxes()
@@ -402,8 +415,12 @@ class Bot:
             except osh.OpenShellError:
                 continue
             if phase is None:
+                # A sandbox that `up` is still creating is registered but not listed yet.
+                if now - box.last_used < CREATE_GRACE:
+                    continue
                 # Double-check with the full list before forgetting a sandbox.
                 if box.name not in {s.get("name") for s in osh.sandboxes()}:
+                    self.approvals.close_all(box.name)
                     self.store.forget_sandbox(box.name)
                 continue
             if phase == "Ready":

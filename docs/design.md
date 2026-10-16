@@ -338,6 +338,8 @@ The CLI and the service both open the database (WAL mode). Losing it loses only 
 | Image cannot be downloaded | Cause: access denied; set the package to Public | A failed create deletes the half-built sandbox |
 | Sandbox in phase Error cannot start | "Delete it and create a new one?" | Deletes only the sandbox, then creates it again |
 | Policy blocks `/dev/ptmx` or `/dev/pts` | Cause and the `filesystem_policy` block to add | `up` probes tmux before attaching; the templates include the block |
+| Address list or program list longer than 300 characters | The card is marked risky and has no Approve button, so nothing is granted that the card does not show in full | Reject, or approve on the machine |
+| Sandbox deleted outside openshell-tg | Its open cards close as "No longer needed" | Buttons stop working |
 | Unexpected exception | "Something unexpected went wrong" and the log path | Traceback goes to the log only; exit 1 |
 
 Recognised causes (`diagnose.py`, matched on the error text): image access denied, image missing, gateway not answering, timeout, disk full, no KVM access, wrong sandbox state, item not found. Anything else shows `Cause: not recognised` with the detail. The error text never contains secrets, because secrets travel in the environment and never in arguments.

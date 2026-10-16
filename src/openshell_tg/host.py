@@ -92,8 +92,11 @@ def check_resources() -> None:
     have = _mem_available_mib()
     if have is not None and have < need + MEM_HEADROOM_MIB:
         raise SetupError(m.t("low_memory", have=f"{have / 1024:.1f}", need=f"{(need + MEM_HEADROOM_MIB) / 1024:.1f}"))
-    base = Path.home() / ".local/share"
-    free = shutil.disk_usage(base if base.exists() else Path.home()).free / 2**30
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    try:
+        free = shutil.disk_usage(data if data.exists() else Path.home()).free / 2**30
+    except OSError:
+        return
     if free < MIN_FREE_DISK_GIB:
         raise SetupError(m.t("low_disk", have=f"{free:.1f}", need=str(MIN_FREE_DISK_GIB)))
 

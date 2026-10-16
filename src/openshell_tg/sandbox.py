@@ -258,12 +258,13 @@ def screen(name: str, lines: int = 15) -> str | None:
 
 def tell_agent(name: str, text: str) -> bool:
     """Type one line into the agent's terminal and press Enter. Literal text, so no key names are interpreted."""
-    line = " ".join("".join(c if c.isprintable() else " " for c in text).split())[:600]
+    line = " ".join("".join(c if c.isprintable() else " " for c in text).split())[:1500]
     try:
-        osh.exec_(name, ["tmux", "send-keys", "-t", "agent", "-l", line], timeout=30)
-        osh.exec_(name, ["tmux", "send-keys", "-t", "agent", "Enter"], timeout=30)
+        # One tmux call, so the text is never left in the input without its Enter.
+        osh.exec_(name, ["tmux", "send-keys", "-t", "agent", "-l", line, ";", "send-keys", "-t", "agent", "Enter"],
+                  timeout=30)
         return True
-    except (osh.OpenShellError, subprocess.TimeoutExpired):
+    except (osh.OpenShellError, subprocess.TimeoutExpired, OSError):
         return False
 
 

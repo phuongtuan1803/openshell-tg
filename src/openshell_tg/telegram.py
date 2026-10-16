@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -29,7 +30,7 @@ class Telegram:
                 data = json.load(exc)
             except ValueError:
                 raise TelegramError(f"{method}: HTTP {exc.code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException, ValueError) as exc:
             raise TelegramError(f"{method}: {exc}") from None
         if not data.get("ok"):
             raise TelegramError(f"{method}: {data.get('description', 'unknown error')}")

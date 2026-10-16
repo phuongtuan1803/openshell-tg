@@ -27,15 +27,27 @@ from .telegram import Telegram, TelegramError
 log = logging.getLogger(__name__)
 
 EXPIRY = 30 * 60
+FIELD_LIMIT = 300  # characters of one field shown on a card
+NUDGE_RULES = 5  # rules named in one line typed to the agent
 NUDGE_DELAY = 6  # seconds between an approval and telling the agent: the sandbox needs time to load the rule
 REASONS = ("reason_broad", "reason_unneeded", "reason_forbidden")
 
 
-def _e(text: object, limit: int = 300) -> str:
+def _e(text: object, limit: int = FIELD_LIMIT) -> str:
     text = str(text or "")
     if len(text) > limit:
         text = text[:limit] + "…"
     return html.escape(text, quote=False)
+
+
+def _too_long(detail: dict) -> bool:
+    """A field the card would cut short: what Approve grants must be visible in full."""
+    return any(len(str(detail.get(k) or "")) > FIELD_LIMIT for k in ("endpoints", "binaries", "binary", "rule"))
+
+
+def _short(text: object, limit: int = 60) -> str:
+    text = " ".join(str(text or "?").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
 def _detail(req: Request) -> dict:
@@ -56,7 +68,7 @@ def card(req: Request, agent: str = "", count: int = 1) -> tuple[str, list]:
     if d.get("rationale"):
         lines.append(f"{m.t('card_reason')}: {_e(d['rationale'])}")
     if req.risky:
-        lines.append(f"⚠️ {_e(d.get('security') or m.t('card_unparsed'))}")
+        lines.append(f"⚠️ {_e(d.get('security') or m.t('card_too_long' if _too_long(d) else 'card_unparsed'))}")
         if d.get("trusted"):
             lines.append(m.t("card_risky_hint", sandbox=_e(req.sandbox), chunk=_e(req.chunk_id)))
         else:
@@ -103,11 +115,16 @@ class Approvals:
     # polling
 
     def poll(self, sandbox: str, agent: str = "") -> None:
-        self._flush_nudge(sandbox)
+        try:
+            self._flush_nudge(sandbox)
+        except Exception:  # a failed nudge must not stop polling
+            log.exception("could not send the pending message to the agent in %s", sandbox)
         try:
             pending = osh.rules(sandbox, "pending")
         except osh.OpenShellError as exc:
-            if not exc.not_found:
+            if exc.not_found:
+                self.close_all(sandbox)
+            else:
                 log.warning("rule get %s failed: %s", sandbox, exc)
             return
         seen = set()
@@ -115,7 +132,7 @@ class Approvals:
             seen.add(chunk.id)
             detail = {k: v for k, v in asdict(chunk).items() if not k.startswith("_")}
             if not self.store.upsert_request(sandbox, chunk.id, chunk.summary(), json.dumps(detail),
-                                             chunk.risky, time.time()):
+                                             chunk.risky or _too_long(detail), time.time()):
                 continue
             log.info("request: sandbox=%s chunk=%s rule=%s endpoints=%s risky=%s", sandbox, chunk.id, chunk.rule,
                      chunk.endpoints, chunk.risky)
@@ -131,6 +148,12 @@ class Approvals:
             if req.sandbox == sandbox and req.message_id is None and req.chunk_id in seen:
                 self.send_card(req, agent)
         self._reconcile(sandbox, seen)
+
+    def close_all(self, sandbox: str) -> None:
+        """The sandbox is gone: close its open cards so their buttons stop working."""
+        for req in self.store.open_requests():
+            if req.sandbox == sandbox:
+                self._close(req, "gone")
 
     def send_card(self, req: Request, agent: str = "") -> bool:
         text, buttons = card(req, agent, req.count)
@@ -208,10 +231,12 @@ class Approvals:
         if not sb.agent_running(sandbox):
             return m.t("agent_not_running")
         rules = []
-        for r in decided:
+        for r in decided[:NUDGE_RULES]:
             d = _detail(r)
-            rules.append(m.t("nudge_rule", lang="en", rule=d.get("rule") or "?", endpoints=d.get("endpoints") or "?",
-                             programs=d.get("binaries") or d.get("binary") or "?"))
+            rules.append(m.t("nudge_rule", lang="en", rule=_short(d.get("rule")), endpoints=_short(d.get("endpoints")),
+                             programs=_short(d.get("binaries") or d.get("binary"))))
+        if len(decided) > NUDGE_RULES:
+            rules.append(f"+{len(decided) - NUDGE_RULES} more")
         line = m.t("nudge" if approve else "nudge_rejected", lang="en", rules=" | ".join(rules), reason=reason or "")
         if not approve:
             told = sb.tell_agent(sandbox, line)
@@ -223,15 +248,26 @@ class Approvals:
         return m.t("agent_will_be_told")
 
     def _flush_nudge(self, sandbox: str) -> None:
-        raw = self.store.get(f"nudge:{sandbox}")
+        key = f"nudge:{sandbox}"
+        raw = self.store.get(key)
         if not raw:
             return
-        pending = json.loads(raw)
-        if time.time() < pending["due"]:
+        try:
+            pending = json.loads(raw)
+            lines, due = pending["lines"], float(pending["due"])
+        except (ValueError, KeyError, TypeError):
+            self.store.put(key, "")
             return
-        self.store.put(f"nudge:{sandbox}", "")
-        told = sb.tell_agent(sandbox, " ".join(pending["lines"]))
-        log.log(logging.INFO if told else logging.WARNING, "agent told: sandbox=%s about=approval ok=%s", sandbox, told)
+        if time.time() < due:
+            return
+        told = sb.tell_agent(sandbox, " ".join(lines))
+        tries = int(pending.get("tries", 0)) + 1
+        log.log(logging.INFO if told else logging.WARNING, "agent told: sandbox=%s about=approval ok=%s try=%d",
+                sandbox, told, tries)
+        if told or tries >= 3:
+            self.store.put(key, "")
+        else:
+            self.store.put(key, json.dumps({"lines": lines, "due": time.time() + NUDGE_DELAY, "tries": tries}))
 
     def _approve(self, req: Request) -> None:
         """Approve; if OpenShell re-evaluated the proposal meanwhile, review it again and retry once."""
