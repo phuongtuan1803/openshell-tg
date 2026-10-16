@@ -1,0 +1,15 @@
+# OpenShell sandbox policy, in OpenShell's own format.
+# It starts with no network access of its own. The agent asks for new
+# addresses and you approve them in Telegram; OpenShell adds approved rules.
+version: 1
+
+network_policies: {}
+
+# Files the agent may read and write. Everything else is read-only or hidden.
+# The /dev entries let tmux open a terminal for the agent; keep them.
+# To let the agent change only part of the folder, set include_workdir: false and
+# list the folders under read_write (applies on rebuild).
+filesystem_policy:
+  include_workdir: true
+  read_only: [/bin, /usr, /lib, /proc, /dev/urandom, /etc, /var/log]
+  read_write: [/tmp, /dev/null, /dev/ptmx, /dev/pts, /dev/tty, /dev/zero]

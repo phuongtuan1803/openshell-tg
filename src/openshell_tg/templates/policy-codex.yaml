@@ -1,0 +1,40 @@
+# OpenShell sandbox policy, in OpenShell's own format.
+# Contains only what the codex subscription login and model API need.
+# The agent asks for other addresses and you approve them in Telegram.
+version: 1
+
+network_policies:
+  codex_subscription:
+    endpoints:
+      - host: api.openai.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: auth.openai.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: chatgpt.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: ab.chatgpt.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+    binaries:
+      - path: /usr/bin/codex
+      - path: /usr/lib/node_modules/@openai/**
+
+# Files the agent may read and write. Everything else is read-only or hidden.
+# The /dev entries let tmux open a terminal for the agent; keep them.
+# To let the agent change only part of the folder, set include_workdir: false and
+# list the folders under read_write (applies on rebuild).
+filesystem_policy:
+  include_workdir: true
+  read_only: [/bin, /usr, /lib, /proc, /dev/urandom, /etc, /var/log]
+  read_write: [/tmp, /dev/null, /dev/ptmx, /dev/pts, /dev/tty, /dev/zero]

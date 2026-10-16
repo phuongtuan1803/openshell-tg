@@ -1,0 +1,52 @@
+#!/bin/sh
+# Opens the agent in a tmux session named "agent", or re-attaches to it.
+# Started by `openshell-tg up` through `openshell sandbox exec`.
+set -eu
+agent="${1:?usage: otg-agent codex|claude|opencode}"
+cd /sandbox/workspace
+
+# Accented text needs a UTF-8 locale; the exec session may not carry the image setting.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+
+# Personal instructions for each agent (read in addition to the project's own).
+# The copy carries a marker line; a copy with the marker is ours and is refreshed
+# on every start, a file without it was written by the user and is left alone.
+guide=/usr/share/openshell-tg/AGENTS.md
+marker='<!-- openshell-tg guide -->'
+for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/opencode/AGENTS.md"; do
+  if [ ! -f "$target" ] || head -1 "$target" | grep -qF "$marker"; then
+    mkdir -p "$(dirname "$target")"
+    { echo "$marker"; cat "$guide"; } > "$target"
+  fi
+done
+
+if tmux has-session -t agent 2>/dev/null; then
+  exec tmux -u attach-session -t agent
+fi
+
+has_history() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
+
+# fresh = a new conversation; resume = continue the last one (same as fresh when there is none).
+case "$agent" in
+  codex)
+    fresh="codex --dangerously-bypass-approvals-and-sandbox"
+    if has_history "$HOME/.codex/sessions"; then resume="$fresh resume --last"; else resume="$fresh"; fi ;;
+  claude)
+    fresh="claude --dangerously-skip-permissions"
+    if has_history "$HOME/.claude/projects"; then resume="$fresh --continue"; else resume="$fresh"; fi ;;
+  opencode)
+    fresh="opencode"
+    if has_history "$HOME/.local/share/opencode/storage"; then resume="opencode --continue"; else resume="opencode"; fi ;;
+  *)
+    echo "Unknown agent: $agent" >&2; exit 2 ;;
+esac
+
+# If resuming ends within 5 seconds (nothing to continue, or the last conversation is still
+# running in the background), start a new conversation instead of closing the window.
+if [ "$resume" = "$fresh" ]; then
+  run="$fresh"
+else
+  run="s=\$(date +%s); $resume; if [ \$((\$(date +%s) - s)) -lt 5 ]; then $fresh; fi"
+fi
+
+exec tmux -u new-session -s agent "$run"

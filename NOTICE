@@ -1,0 +1,8 @@
+openshell-tg
+Copyright 2026 the openshell-tg authors
+
+src/openshell_tg/profiles/ contains provider profiles adapted from the
+NVIDIA OpenShell project (https://github.com/NVIDIA/OpenShell, providers/,
+tag v0.1.4), Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES,
+licensed under the Apache License 2.0. The `binaries` lists were edited to
+match the openshell-tg agent image.
