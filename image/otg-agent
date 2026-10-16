@@ -26,17 +26,27 @@ fi
 
 has_history() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
 
+# fresh = a new conversation; resume = continue the last one (same as fresh when there is none).
 case "$agent" in
   codex)
-    flags="--dangerously-bypass-approvals-and-sandbox"
-    if has_history "$HOME/.codex/sessions"; then cmd="codex $flags resume --last"; else cmd="codex $flags"; fi ;;
+    fresh="codex --dangerously-bypass-approvals-and-sandbox"
+    if has_history "$HOME/.codex/sessions"; then resume="$fresh resume --last"; else resume="$fresh"; fi ;;
   claude)
-    flags="--dangerously-skip-permissions"
-    if has_history "$HOME/.claude/projects"; then cmd="claude $flags --continue"; else cmd="claude $flags"; fi ;;
+    fresh="claude --dangerously-skip-permissions"
+    if has_history "$HOME/.claude/projects"; then resume="$fresh --continue"; else resume="$fresh"; fi ;;
   opencode)
-    if has_history "$HOME/.local/share/opencode/storage"; then cmd="opencode --continue"; else cmd="opencode"; fi ;;
+    fresh="opencode"
+    if has_history "$HOME/.local/share/opencode/storage"; then resume="opencode --continue"; else resume="opencode"; fi ;;
   *)
     echo "Unknown agent: $agent" >&2; exit 2 ;;
 esac
 
-exec tmux -u new-session -s agent "$cmd"
+# If resuming ends within 5 seconds (nothing to continue, or the last conversation is still
+# running in the background), start a new conversation instead of closing the window.
+if [ "$resume" = "$fresh" ]; then
+  run="$fresh"
+else
+  run="s=\$(date +%s); $resume; if [ \$((\$(date +%s) - s)) -lt 5 ]; then $fresh; fi"
+fi
+
+exec tmux -u new-session -s agent "$run"
