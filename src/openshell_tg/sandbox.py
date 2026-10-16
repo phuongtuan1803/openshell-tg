@@ -225,6 +225,30 @@ def agent_running(name: str) -> bool:
         return False
 
 
+IDLE_SECONDS = 15
+
+
+def agent_idle_seconds(name: str) -> int | None:
+    """Seconds since the agent's terminal last changed; None when the agent is not running."""
+    script = 'a=$(tmux display-message -p -t agent "#{window_activity}") || exit 3; echo $(( $(date +%s) - a ))'
+    try:
+        done = osh.exec_(name, ["sh", "-c", script], timeout=30, check=False)
+        return int(done.stdout.strip()) if done.returncode == 0 else None
+    except (osh.OpenShellError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def tell_agent(name: str, text: str) -> bool:
+    """Type one line into the agent's terminal and press Enter. Literal text, so no key names are interpreted."""
+    line = " ".join("".join(c if c.isprintable() else " " for c in text).split())[:600]
+    try:
+        osh.exec_(name, ["tmux", "send-keys", "-t", "agent", "-l", line], timeout=30)
+        osh.exec_(name, ["tmux", "send-keys", "-t", "agent", "Enter"], timeout=30)
+        return True
+    except (osh.OpenShellError, subprocess.TimeoutExpired):
+        return False
+
+
 # code out
 
 def pull(project: Project) -> list[tuple[str, int]]:

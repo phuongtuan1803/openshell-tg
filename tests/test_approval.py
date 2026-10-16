@@ -3,6 +3,7 @@ import time
 import pytest
 
 from openshell_tg import approval, osh
+from openshell_tg import sandbox as sb
 from openshell_tg.approval import Approvals
 
 
@@ -30,6 +31,10 @@ def gateway(monkeypatch):
         state["pending"] = [c for c in state["pending"] if c.id != cid]
         state["rejected"] += moved
 
+    state["idle"] = None  # agent not running unless a test says otherwise
+    state["told"] = []
+    monkeypatch.setattr(sb, "agent_idle_seconds", lambda name: state["idle"])
+    monkeypatch.setattr(sb, "tell_agent", lambda name, text: state["told"].append(text) or True)
     monkeypatch.setattr(osh, "rules", rules)
     monkeypatch.setattr(osh, "approve", approve)
     monkeypatch.setattr(osh, "reject", reject)
@@ -224,3 +229,52 @@ def test_no_retry_when_the_reevaluated_proposal_became_risky(store, tg, gateway,
     monkeypatch.setattr(osh, "approve", changed)
     assert a.on_button(f"ok:{store.request('sb', 'c1').id}") is not None
     assert attempts == ["c1"] and store.request("sb", "c1").status == "pending"
+
+
+def _tap_approve(store, tg, gateway):
+    gateway["pending"] = [chunk("c1", endpoints="pypi.org:443", rule="allow_pypi")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+    a.on_button(f"ok:{store.open_requests()[0].id}")
+    return a
+
+
+def test_approval_tells_an_idle_agent_with_rule_details(store, tg, gateway):
+    gateway["idle"] = 60
+    _tap_approve(store, tg, gateway)
+    assert len(gateway["told"]) == 1
+    text = gateway["told"][0]
+    assert "allow_pypi" in text and "pypi.org:443" in text and "/usr/bin/python3" in text
+    assert "The agent was told" in tg.edits[-1][1]
+
+
+def test_busy_agent_is_told_later_when_idle(store, tg, gateway):
+    gateway["idle"] = 3
+    a = _tap_approve(store, tg, gateway)
+    assert gateway["told"] == []
+    assert "busy" in tg.edits[-1][1]
+    a.poll("sb")
+    assert gateway["told"] == []
+    gateway["idle"] = 40
+    a.poll("sb")
+    assert len(gateway["told"]) == 1
+    a.poll("sb")
+    assert len(gateway["told"]) == 1
+
+
+def test_stopped_agent_is_not_told(store, tg, gateway):
+    gateway["idle"] = None
+    _tap_approve(store, tg, gateway)
+    assert gateway["told"] == []
+    assert "agent" not in tg.edits[-1][1].lower()
+
+
+def test_rejection_never_tells_the_agent(store, tg, gateway):
+    gateway["idle"] = 60
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+    rid = store.open_requests()[0].id
+    a.on_button(f"no:{rid}")
+    a.on_button(f"why:{rid}:0")
+    assert gateway["told"] == []

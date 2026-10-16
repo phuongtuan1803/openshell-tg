@@ -151,7 +151,7 @@ Expires: 18:10
 | A card marked **check carefully** with no Approve button | **Reject**, unless you understand the warning. To approve it anyway, run the command shown on the card on the machine |
 | A card you cannot answer now | Do nothing. After 30 minutes it counts as Reject |
 
-**Expected result:** the card changes to `✅ Approved` or `❌ Rejected` and its buttons disappear.
+**Expected result:** the card changes to `✅ Approved` or `❌ Rejected` and its buttons disappear. After you approve, the card also says whether the agent was told to continue (`🔔 The agent was told to continue.`) or is busy and will be told when it is idle.
 
 ## 6. Everyday use
 

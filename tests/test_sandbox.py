@@ -2,6 +2,7 @@ import subprocess
 
 import pytest
 
+from openshell_tg import osh
 from openshell_tg import sandbox as sb
 
 
@@ -118,3 +119,11 @@ def test_policy_templates_allow_terminal_devices():
     for f in (Path(openshell_tg.__file__).parent / "templates").glob("policy*.yaml"):
         fs = yaml.safe_load(f.read_text())["filesystem_policy"]
         assert {"/dev/ptmx", "/dev/pts"} <= set(fs["read_write"]), f.name
+
+
+def test_tell_agent_types_literal_text_then_enter(monkeypatch):
+    calls = []
+    monkeypatch.setattr(osh, "exec_", lambda name, cmd, **kw: calls.append(cmd))
+    assert sb.tell_agent("sb", "line one\nline two\x1b[31m")
+    assert calls[0][:6] == ["tmux", "send-keys", "-t", "agent", "-l", "line one line two [31m"]
+    assert calls[1] == ["tmux", "send-keys", "-t", "agent", "Enter"]
