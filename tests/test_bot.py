@@ -1,6 +1,7 @@
 import pytest
 
 from openshell_tg import osh
+from openshell_tg import sandbox as sb
 from openshell_tg.bot import Bot
 
 
@@ -142,3 +143,41 @@ def test_tick_survives_errors(bot, store, monkeypatch):
     monkeypatch.setattr(bot.approvals, "poll", boom)
     monkeypatch.setattr(bot, "idle_check", boom)
     bot.tick()  # must not raise
+
+
+def _box(store, name="sb1"):
+    store.save_sandbox(name, "/tmp", "claude", 0)
+
+
+def test_quiet_agent_after_work_is_reported_once(bot, tg, store, monkeypatch):
+    _box(store)
+    quiet = {"s": 5}
+    monkeypatch.setattr(sb, "agent_idle_seconds", lambda name: quiet["s"])
+    bot.watch_agent("sb1")
+    assert tg.sent == []
+    quiet["s"] = 60
+    bot.watch_agent("sb1")
+    assert tg.sent == []
+    quiet["s"] = 150
+    bot.watch_agent("sb1")
+    bot.watch_agent("sb1")
+    assert len(tg.sent) == 1 and "/screen" in tg.sent[0][1]
+    quiet["s"] = 3
+    bot.watch_agent("sb1")
+    quiet["s"] = 200
+    bot.watch_agent("sb1")
+    assert len(tg.sent) == 2
+
+
+def test_screen_shows_escaped_lines(bot, tg, store, monkeypatch):
+    _box(store)
+    monkeypatch.setattr(sb, "screen", lambda name: "Do you want to proceed? <y/n>")
+    bot.handle(message("/screen"))
+    assert "<pre>Do you want to proceed? &lt;y/n&gt;</pre>" in tg.sent[0][1]
+
+
+def test_screen_when_agent_not_running(bot, tg, store, monkeypatch):
+    _box(store)
+    monkeypatch.setattr(sb, "screen", lambda name: None)
+    bot.handle(message("/screen"))
+    assert "No agent is running" in tg.sent[0][1]

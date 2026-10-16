@@ -111,6 +111,12 @@ EN = {
     "cmd_help": "What this bot does",
     "cmd_list": "All sandboxes",
     "cmd_status": "Machine status and waiting requests",
+    "cmd_screen": "Show what the agent is doing",
+    "agent_waiting": "🔔 <b>{name}</b>: the agent has been quiet for {quiet}. It may be waiting for your answer. Send /screen to see its last lines, then answer in the terminal (openshell-tg up).",
+    "screen_title": "Screen of {name}",
+    "screen_none": "No agent is running in {name}. Run openshell-tg up to open it.",
+    "screen_empty": "The screen is empty.",
+    "screen_warn": "Anyone who can read this chat can see these lines. Do not forward them.",
     "cmd_rules": "Approved addresses",
     "help": ("<b>openshell-tg</b>\n"
              "Agents work inside a closed sandbox on your machine. When one needs a new internet address, "
@@ -118,7 +124,7 @@ EN = {
              "• <b>Approve</b> if the address fits the agent's task (package sites, docs, your own services).\n"
              "• <b>Reject</b> if you do not recognise it or it is broader than needed.\n"
              "• No answer within 30 minutes counts as Reject.\n\n"
-             "/list all sandboxes\n/status machine and waiting requests\n/rules approved addresses"),
+             "/list all sandboxes\n/status machine and waiting requests\n/rules approved addresses\n/screen what the agent is doing"),
     "ready": "Ready. Requests from your agents will appear here. Send /help to see what I do.",
     "list_title": "Sandboxes",
     "list_row": "<b>{name}</b> · {state} · used {used} {missing}\n<code>{folder}</code>",
@@ -292,6 +298,12 @@ VI = {
     "cmd_help": "Bot này làm gì",
     "cmd_list": "Mọi sandbox",
     "cmd_status": "Trạng thái máy và yêu cầu đang chờ",
+    "cmd_screen": "Xem agent đang làm gì",
+    "agent_waiting": "🔔 <b>{name}</b>: agent đã im lặng {quiet}. Có thể nó đang chờ bạn trả lời. Gửi /screen để xem vài dòng cuối, rồi trả lời trong terminal (openshell-tg up).",
+    "screen_title": "Màn hình của {name}",
+    "screen_none": "Không có agent nào đang chạy trong {name}. Chạy openshell-tg up để mở lại.",
+    "screen_empty": "Màn hình đang trống.",
+    "screen_warn": "Ai đọc được cuộc trò chuyện này đều thấy các dòng trên. Đừng chuyển tiếp.",
     "cmd_rules": "Địa chỉ đã duyệt",
     "help": ("<b>openshell-tg</b>\n"
              "Agent làm việc trong sandbox kín trên máy nhà. Khi agent cần một địa chỉ internet mới, "
@@ -299,7 +311,7 @@ VI = {
              "• <b>Duyệt</b> nếu địa chỉ hợp với việc agent đang làm (trang tải gói, tài liệu, dịch vụ của bạn).\n"
              "• <b>Từ chối</b> nếu bạn không biết địa chỉ đó hoặc nó rộng hơn cần thiết.\n"
              "• Không trả lời trong 30 phút thì tính là Từ chối.\n\n"
-             "/list mọi sandbox\n/status trạng thái máy và yêu cầu đang chờ\n/rules địa chỉ đã duyệt"),
+             "/list mọi sandbox\n/status trạng thái máy và yêu cầu đang chờ\n/rules địa chỉ đã duyệt\n/screen xem agent đang làm gì"),
     "ready": "Sẵn sàng. Yêu cầu từ agent sẽ hiện ở đây. Gửi /help để xem bot làm gì.",
     "list_title": "Sandbox",
     "list_row": "<b>{name}</b> · {state} · dùng {used} {missing}\n<code>{folder}</code>",

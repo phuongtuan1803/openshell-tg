@@ -127,3 +127,10 @@ def test_tell_agent_types_literal_text_then_enter(monkeypatch):
     assert sb.tell_agent("sb", "line one\nline two\x1b[31m")
     assert calls[0][:6] == ["tmux", "send-keys", "-t", "agent", "-l", "line one line two [31m"]
     assert calls[1] == ["tmux", "send-keys", "-t", "agent", "Enter"]
+
+
+def test_screen_returns_last_lines(monkeypatch):
+    out = "\n".join(f"line {i}" for i in range(40)) + "\n\n\n"
+    monkeypatch.setattr(osh, "exec_", lambda *a, **k: subprocess.CompletedProcess([], 0, out, ""))
+    text = sb.screen("sb", lines=3)
+    assert text == "line 37\nline 38\nline 39"

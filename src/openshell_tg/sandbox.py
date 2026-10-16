@@ -238,6 +238,20 @@ def agent_idle_seconds(name: str) -> int | None:
         return None
 
 
+def screen(name: str, lines: int = 15) -> str | None:
+    """The last lines shown in the agent's terminal; None when the agent is not running."""
+    try:
+        done = osh.exec_(name, ["tmux", "capture-pane", "-p", "-t", "agent"], timeout=30, check=False)
+    except (osh.OpenShellError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0:
+        return None
+    rows = [r.rstrip() for r in done.stdout.splitlines()]
+    while rows and not rows[-1]:
+        rows.pop()
+    return "\n".join(rows[-lines:])[-3000:]
+
+
 def tell_agent(name: str, text: str) -> bool:
     """Type one line into the agent's terminal and press Enter. Literal text, so no key names are interpreted."""
     line = " ".join("".join(c if c.isprintable() else " " for c in text).split())[:600]

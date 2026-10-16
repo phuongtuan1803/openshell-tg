@@ -151,7 +151,7 @@ Expires: 18:10
 | A card marked **check carefully** with no Approve button | **Reject**, unless you understand the warning. To approve it anyway, run the command shown on the card on the machine |
 | A card you cannot answer now | Do nothing. After 30 minutes it counts as Reject |
 
-**Expected result:** the card changes to `✅ Approved` or `❌ Rejected` and its buttons disappear. After you approve, the card also says whether the agent was told to continue (`🔔 The agent was told to continue.`) or is busy and will be told when it is idle.
+**Expected result:** the card changes to `✅ Approved` or `❌ Rejected` and its buttons disappear. After you approve, the agent is told at once which rule was approved and the card adds `🔔 The agent was told to continue.`
 
 ## 6. Everyday use
 
@@ -162,6 +162,7 @@ Expires: 18:10
 | See what is waiting for you | Telegram `/status`, or `openshell-tg status` in the folder | Pending requests and response times |
 | See all sandboxes | Telegram `/list`, or `openshell-tg list` | One line per sandbox with its state |
 | Remove an approved address | Telegram `/rules`, tap **Remove N** for the number of the address, then **Remove** to confirm. Use ◀ ▶ for more pages | The address disappears from the list and the bot shows `Removed` |
+| Know when the agent is waiting for your answer | The bot sends `🔔 …the agent has been quiet…` after 2 minutes of silence. Send `/screen` to see its last lines, then answer in the terminal with `openshell-tg up` | `/screen` shows a block of text from the agent. Do not forward it, it may contain private data |
 | Get the agent's work into your folder | `openshell-tg pull` in the folder | `otg/work: 3 commit(s) not in your current branch` |
 | Delete a sandbox you no longer need | `openshell-tg destroy` in the folder, or **Delete** in `/list` | `Sandbox … deleted.` |
 

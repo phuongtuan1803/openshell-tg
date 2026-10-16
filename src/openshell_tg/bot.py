@@ -23,8 +23,11 @@ from .telegram import Telegram, TelegramError
 
 log = logging.getLogger(__name__)
 
-COMMANDS = ("help", "list", "status", "rules")
+COMMANDS = ("help", "list", "status", "rules", "screen")
 IDLE_EVERY = 600
+WATCH_EVERY = 30
+QUIET_AFTER = 120  # agent silent this long after working: tell the owner
+WORKING_UNDER = 30  # terminal changed within this many seconds counts as working
 HOUSEKEEPING_EVERY = 3600
 REMIND_AFTER = 14 * 86400
 DISK_WARN = 0.10
@@ -47,6 +50,7 @@ class Bot:
         self.approvals = Approvals(store, tg, chat_id)
         self.offline_since: float | None = None
         self._last_idle = 0.0
+        self._last_watch = 0.0
         self._last_house = 0.0
 
     def say(self, _key: str, /, buttons=None, **kw) -> int | None:
@@ -109,6 +113,10 @@ class Bot:
         for box in self.store.sandboxes():
             _guard(self.approvals.poll, box.name, box.agent)
         now = time.time()
+        if now - self._last_watch > WATCH_EVERY:
+            self._last_watch = now
+            for box in self.store.sandboxes():
+                _guard(self.watch_agent, box.name)
         if now - self._last_idle > IDLE_EVERY:
             self._last_idle = now
             _guard(self.idle_check)
@@ -152,7 +160,7 @@ class Bot:
         command, *args = text[1:].split()
         command = command.split("@")[0].lower()
         handler = {"start": self.cmd_help, "help": self.cmd_help, "list": self.cmd_list,
-                   "status": self.cmd_status, "rules": self.cmd_rules}.get(command, self.cmd_help)
+                   "status": self.cmd_status, "rules": self.cmd_rules, "screen": self.cmd_screen}.get(command, self.cmd_help)
         handler(args)
 
     # commands
@@ -204,6 +212,34 @@ class Bot:
                     pass
             box = self.store.sandbox(req.sandbox)
             self.approvals.send_card(req, box.agent if box else "")
+
+    def watch_agent(self, name: str) -> None:
+        """Tell the owner once when an agent that was working has gone quiet: it may be asking a question."""
+        quiet = sb.agent_idle_seconds(name)
+        if quiet is None:
+            self.store.put(f"working:{name}", "0")
+        elif quiet < WORKING_UNDER:
+            self.store.put(f"working:{name}", "1")
+        elif quiet >= QUIET_AFTER and self.store.get(f"working:{name}") == "1":
+            self.store.put(f"working:{name}", "0")
+            if not any(r.sandbox == name for r in self.store.open_requests()):
+                self.say("agent_waiting", name=html.escape(name), quiet=m.duration(quiet))
+
+    def cmd_screen(self, args) -> None:
+        boxes = self.store.sandboxes()
+        if args:
+            boxes = [b for b in boxes if b.name == args[0] or args[0] in b.name]
+        if not boxes:
+            self.say("list_empty")
+            return
+        for box in boxes:
+            text = sb.screen(box.name)
+            name = html.escape(box.name)
+            if text is None:
+                self.say("screen_none", name=name)
+                continue
+            body = html.escape(text) if text.strip() else m.t("screen_empty")
+            self.tg.send(self.chat_id, f"<b>{m.t('screen_title', name=name)}</b>\n<pre>{body}</pre>\n{m.t('screen_warn')}")
 
     def cmd_rules(self, args) -> None:
         boxes = self.store.sandboxes()

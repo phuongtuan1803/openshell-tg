@@ -27,7 +27,6 @@ from .telegram import Telegram, TelegramError
 log = logging.getLogger(__name__)
 
 EXPIRY = 30 * 60
-NUDGE_WINDOW = 10 * 60  # how long a "continue" message waits for the agent to become idle
 REASONS = ("reason_broad", "reason_unneeded", "reason_forbidden")
 
 
@@ -103,7 +102,6 @@ class Approvals:
     # polling
 
     def poll(self, sandbox: str, agent: str = "") -> None:
-        self._flush_nudge(sandbox)
         try:
             pending = osh.rules(sandbox, "pending")
         except osh.OpenShellError as exc:
@@ -200,31 +198,17 @@ class Approvals:
     # telling the agent to continue
 
     def _nudge(self, sandbox: str, approved: list[Request]) -> str | None:
-        """Tell the agent which rules were approved so it carries on. Waits if the agent is busy."""
+        """Tell the agent at once which rules were approved so it carries on."""
+        if not sb.agent_running(sandbox):
+            return None
         rules = []
         for r in approved:
             d = _detail(r)
             rules.append(m.t("nudge_rule", lang="en", rule=d.get("rule") or "?", endpoints=d.get("endpoints") or "?",
                              programs=d.get("binaries") or d.get("binary") or "?"))
-        idle = sb.agent_idle_seconds(sandbox)
-        if idle is None:
-            return None
-        if idle >= sb.IDLE_SECONDS and sb.tell_agent(sandbox, m.t("nudge", lang="en", rules=" | ".join(rules))):
+        if sb.tell_agent(sandbox, m.t("nudge", lang="en", rules=" | ".join(rules))):
             return m.t("agent_told")
-        self.store.put(f"nudge:{sandbox}", json.dumps({"rules": rules, "until": time.time() + NUDGE_WINDOW}))
-        return m.t("agent_will_be_told")
-
-    def _flush_nudge(self, sandbox: str) -> None:
-        raw = self.store.get(f"nudge:{sandbox}")
-        if not raw:
-            return
-        pending = json.loads(raw)
-        idle = sb.agent_idle_seconds(sandbox) if time.time() < pending["until"] else None
-        if idle is not None and idle < sb.IDLE_SECONDS:
-            return  # still busy: try again on the next poll
-        if idle is not None:
-            sb.tell_agent(sandbox, m.t("nudge", lang="en", rules=" | ".join(pending["rules"])))
-        self.store.put(f"nudge:{sandbox}", "")
+        return None
 
     def _approve(self, req: Request) -> None:
         """Approve; if OpenShell re-evaluated the proposal meanwhile, review it again and retry once."""
