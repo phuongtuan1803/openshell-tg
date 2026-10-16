@@ -14,7 +14,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import host, osh
+from . import __version__, host, osh
 from . import messages as m
 from . import sandbox as sb
 from .approval import Approvals
@@ -63,6 +63,7 @@ class Bot:
     # start-up
 
     def start(self) -> None:
+        log.info("service started: version=%s sandboxes=%d", __version__, len(self.store.sandboxes()))
         try:
             self.tg.set_commands([(c, m.t(f"cmd_{c}")) for c in COMMANDS])
         except TelegramError as exc:
@@ -223,6 +224,7 @@ class Bot:
         elif quiet >= QUIET_AFTER and self.store.get(f"working:{name}") == "1":
             self.store.put(f"working:{name}", "0")
             if not any(r.sandbox == name for r in self.store.open_requests()):
+                log.info("agent quiet: sandbox=%s quiet_for=%s", name, m.duration(quiet))
                 self.say("agent_waiting", name=html.escape(name), quiet=m.duration(quiet))
 
     def cmd_screen(self, args) -> None:
@@ -420,6 +422,7 @@ class Bot:
                     try:
                         osh.stop(box.name)
                         self.store.mark_stopped(box.name)
+                        log.info("idle stop: sandbox=%s unused_for=%s", box.name, m.duration(now - box.last_used))
                     except osh.OpenShellError as exc:
                         log.warning("idle stop %s failed: %s", box.name, exc)
 
@@ -437,6 +440,7 @@ class Bot:
             self.say(key, [[(m.t("btn_delete"), f"del:{box.name}"), (m.t("btn_keep"), f"keep:{box.name}")]],
                      sandbox=html.escape(box.name), folder=html.escape(box.folder), days=days)
             self.store.mark_reminded(box.name)
+            log.info("reminder sent: sandbox=%s reason=%s", box.name, "folder missing" if missing else "stopped for days")
 
     def disk_check(self) -> None:
         usage = shutil.disk_usage(Path.home())

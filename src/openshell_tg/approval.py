@@ -117,6 +117,8 @@ class Approvals:
             if not self.store.upsert_request(sandbox, chunk.id, chunk.summary(), json.dumps(detail),
                                              chunk.risky, time.time()):
                 continue
+            log.info("request: sandbox=%s chunk=%s rule=%s endpoints=%s risky=%s", sandbox, chunk.id, chunk.rule,
+                     chunk.endpoints, chunk.risky)
             dup = None if chunk.risky else self.store.find_duplicate(sandbox, chunk.summary())
             if dup:
                 count = self.store.bump(dup.sandbox, dup.chunk_id)
@@ -188,6 +190,8 @@ class Approvals:
                 failed += 1
                 continue
             self.store.close_request(r.sandbox, r.chunk_id, status, reason, tapped=tapped)
+            log.info("decision: sandbox=%s chunk=%s result=%s by=%s", r.sandbox, r.chunk_id, status,
+                     "owner" if tapped else "service")
             decided.append(r)
             if approve:
                 self.store.mark_loaded(r.sandbox, r.chunk_id)
@@ -210,7 +214,9 @@ class Approvals:
                              programs=d.get("binaries") or d.get("binary") or "?"))
         line = m.t("nudge" if approve else "nudge_rejected", lang="en", rules=" | ".join(rules), reason=reason or "")
         if not approve:
-            return m.t("agent_told") if sb.tell_agent(sandbox, line) else m.t("agent_not_running")
+            told = sb.tell_agent(sandbox, line)
+            log.info("agent told: sandbox=%s about=rejection ok=%s", sandbox, told)
+            return m.t("agent_told") if told else m.t("agent_not_running")
         key = f"nudge:{sandbox}"
         lines = json.loads(self.store.get(key) or "{}").get("lines", [])
         self.store.put(key, json.dumps({"lines": lines + [line], "due": time.time() + NUDGE_DELAY}))
@@ -224,8 +230,8 @@ class Approvals:
         if time.time() < pending["due"]:
             return
         self.store.put(f"nudge:{sandbox}", "")
-        if not sb.tell_agent(sandbox, " ".join(pending["lines"])):
-            log.warning("could not tell the agent in %s about the approval", sandbox)
+        told = sb.tell_agent(sandbox, " ".join(pending["lines"]))
+        log.log(logging.INFO if told else logging.WARNING, "agent told: sandbox=%s about=approval ok=%s", sandbox, told)
 
     def _approve(self, req: Request) -> None:
         """Approve; if OpenShell re-evaluated the proposal meanwhile, review it again and retry once."""

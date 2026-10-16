@@ -41,7 +41,9 @@ pipx install git+https://github.com/phuongtuan1803/openshell-tg.git
 | See what is going on | `openshell-tg status`, `openshell-tg list` |
 | Remove the sandbox | `openshell-tg destroy` |
 
-In Telegram: `/help`, `/list`, `/status`, `/rules`.
+In Telegram: `/help`, `/list`, `/status`, `/rules`, `/screen`.
+
+After you tap Approve or Reject, the agent is told the decision. If the agent stops and may be waiting for you, the bot says so; `/screen` shows what it last printed. Logs: `openshell-tg logs`.
 
 If the computer turns off while the agent works, nothing in the sandbox is lost except commands that were running. Run `openshell-tg up` again to continue.
 

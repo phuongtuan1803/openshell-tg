@@ -209,7 +209,7 @@ Show the last 40 lines of the log:
 openshell-tg logs
 ```
 
-**Expected result:** timestamped lines, newest last. Use `openshell-tg logs -n 200` for more. The file is `~/.local/state/openshell-tg/openshell-tg.log`; it never contains keys and is capped at about 4 MB.
+**Expected result:** timestamped lines, newest last. Use `openshell-tg logs -n 200` for more. The file is `~/.local/state/openshell-tg/openshell-tg.log`; anything that looks like a key is replaced with `[hidden]`, and the file is capped at about 4 MB.
 
 ## 9. Remove openshell-tg
 

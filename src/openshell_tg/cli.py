@@ -6,7 +6,6 @@ import argparse
 import getpass
 import hashlib
 import logging
-import logging.handlers
 import subprocess
 import sys
 from pathlib import Path
@@ -16,8 +15,9 @@ import yaml
 from . import __version__, diagnose, host, osh, project
 from . import messages as m
 from . import sandbox as sb
+from .logsetup import LOG_FILE, setup_logging
 from .project import ConfigError, Project
-from .store import Store, state_dir
+from .store import Store
 
 log = logging.getLogger("openshell_tg")
 PACKAGE_PROFILES = Path(__file__).parent / "profiles"
@@ -50,10 +50,6 @@ def prompt_secret(question: str) -> str:
             return value
 
 
-def LOG_FILE() -> Path:
-    return state_dir() / "openshell-tg.log"
-
-
 def cmd_logs(args) -> int:
     path = LOG_FILE()
     lines = path.read_text(errors="replace").splitlines() if path.exists() else []
@@ -62,16 +58,6 @@ def cmd_logs(args) -> int:
         return 0
     say("\n".join(lines[-args.lines:]))
     return 0
-
-
-def setup_logging(service: bool = False) -> None:
-    handler = logging.handlers.RotatingFileHandler(LOG_FILE(), maxBytes=1_000_000, backupCount=3)
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    root.addHandler(handler)
-    if service:
-        root.addHandler(logging.StreamHandler(sys.stderr))
 
 
 # up
@@ -140,6 +126,7 @@ def cmd_up(args) -> int:
     if not (folder / project.CONFIG_NAME).exists():
         first_run_questions(folder)
     proj = project.load(folder)
+    log.info("up: sandbox=%s agent=%s folder=%s", proj.sandbox, proj.agent, folder)
 
     host.check_kvm()
     host.ensure_openshell(ask)
@@ -168,6 +155,7 @@ def cmd_up(args) -> int:
     if sb.state(proj.sandbox) != "Ready":
         host.check_resources()
     created = sb.ensure_running(proj, providers, say, ask)
+    log.info("up: sandbox=%s %s", proj.sandbox, "created" if created else "reused")
     if created or store.get(f"policy:{proj.sandbox}") is None:
         store.put(f"policy:{proj.sandbox}", _policy_hash(proj))
         store.put(f"auth:{proj.sandbox}", proj.auth)
@@ -278,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         say(diagnose.report(exc, LOG_FILE()))
     except subprocess.CalledProcessError as exc:
         log.error("%s: %s", exc, (exc.stderr or "").strip()[-1000:])
-        say(m.t("git_failed", log=state_dir() / "openshell-tg.log"))
+        say(m.t("git_failed", log=LOG_FILE()))
     except FileNotFoundError as exc:
         log.error("%s", exc)
         say(m.t("missing_program", program=exc.filename))

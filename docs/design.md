@@ -129,7 +129,7 @@ flowchart TD
 | Step | Commands used | Notes |
 | --- | --- | --- |
 | 1. Config | none | Questions: agent, subscription or API key, use GitHub. Writes `openshell-tg.yaml` and `openshell/policy.yaml` from templates. |
-| 2. Host | `test -w /dev/kvm`, `openshell status -o json`, `openshell gateway info -o json` | OpenShell missing: offer to run its official installer with `OPENSHELL_VERSION` pinned. Gateway config missing: write `gateway.toml` (vm driver, agent image, 4 vCPUs, 8 GiB), run `openshell-gateway config preflight`, restart the user service, enable linger. Existing config without the vm driver: stop and explain. |
+| 2. Host | `test -w /dev/kvm`, `openshell status -o json`, `openshell gateway info -o json` | Before a sandbox is created or started: free memory must cover the VM (`mem_mib` from `gateway.toml`, 8 GiB by default, plus 1 GiB) and 10 GiB of disk must be free, otherwise `up` stops with the numbers and a next step. OpenShell missing: offer to run its official installer with `OPENSHELL_VERSION` pinned. Gateway config missing: write `gateway.toml` (vm driver, agent image, 4 vCPUs, 8 GiB), run `openshell-gateway config preflight`, restart the user service, enable linger. Existing config without the vm driver: stop and explain. |
 | 3. Telegram (once per machine) | Bot API | Ask the BotFather token (hidden input), call `getMe`, drop old updates, show a one-time code and wait for `/start <code>` in a private chat; take chat and user id from that message. Encrypt token with `sudo systemd-creds encrypt`, install and start the service. One sudo prompt. |
 | 4. Advisor | `openshell settings set --global --key agent_policy_proposals_enabled --value true --yes` | Global, so every sandbox gets `policy.local` and the guide at `/etc/openshell/skills/policy_advisor.md`. `/AGENTS.md` is written only when the file system allows it, so the sandbox guide of openshell-tg repeats the API calls itself. |
 | 5. Providers | `openshell profile import -f`, `openshell provider list -o json`, `openshell provider create --name P --type P --credential VAR` | openshell-tg ships edited copies of OpenShell's example profiles (binaries match the agent image). The secret is read with hidden input and passed as an environment variable, never on argv. |
@@ -252,10 +252,11 @@ sequenceDiagram
 
 | Command | Shows |
 | --- | --- |
-| `/help` | What the bot does, the four commands, when to approve |
+| `/help` | What the bot does, the commands, when to approve |
 | `/list` | Every sandbox: running or stopped, last use, folder; Stop and Delete buttons |
 | `/status` | Machine and service up, pending requests (resends their cards), response times for 7 days |
 | `/rules [sandbox]` | Approved addresses, numbered, 8 per page, with `Remove N` buttons and a confirmation step |
+| `/screen [sandbox]` | The last 15 lines of the agent's terminal (section 7.5) |
 
 ### 7.2 Card
 
@@ -292,8 +293,13 @@ Every 5 seconds and at service start, open cards are reconciled with `rule get`:
 | Host restarted | Section 5.7 |
 | Sandbox stopped 14 days / folder deleted | "my-project has been stopped for 15 days." [Delete] [Keep 14 days] |
 | Disk below 10% free (checked hourly) | "Disk is 90% full. Largest sandbox: my-project." [Delete] |
+| Agent quiet for 2 minutes after working | "my-project: the agent has been quiet for 2 min. It may be waiting for your answer." Section 7.5 |
 | Internet back after an outage | "2 requests expired while the machine was offline." |
 | Service error | One plain sentence; detail in the log |
+
+### 7.5 Agent questions and `/screen`
+
+An agent may stop to ask the Founder a question. OpenShell has no event for this, so the service watches the terminal: every 30 s it reads the age of the last output in the agent's tmux window (`window_activity`). When a window that was working (output within 30 s) has then been quiet for 2 minutes, and no request card is open for that sandbox, the bot sends one notice with the sandbox name. The notice repeats only after the agent has worked again. The notice carries no terminal text. `/screen` sends the last 15 lines of the window (up to 3000 characters) in a pre-formatted block, with a warning that the text is visible to the chat; it is sent only on request because the terminal may show secrets.
 
 ## 8. Metrics
 
@@ -338,18 +344,21 @@ Recognised causes (`diagnose.py`, matched on the error text): image access denie
 
 The log is `~/.local/state/openshell-tg/openshell-tg.log`, rotated at 1 MB with 3 backups. `openshell-tg logs [-n N]` prints its last lines.
 
+Log format: `time level [cli|serve] module: event key=value ...`. Lifecycle events are logged at INFO (`up`, `create`, `start`, `request`, `decision`, `agent told`, `idle stop`, `agent quiet`, `service started`); failures at WARNING or ERROR with the cause and the last lines of the `openshell` error; every `openshell` call at DEBUG (`OPENSHELL_TG_LOG_LEVEL=DEBUG`). Before a line is written, anything that looks like a secret (bot token, API key, bearer token, `key=value` credential) is replaced with `[hidden]`; the agent's rationale and terminal text are never logged.
+
 ## 11. Code layout
 
 | Path | Responsibility |
 | --- | --- |
 | `src/openshell_tg/cli.py` | Commands `up`, `status`, `list`, `pull`, `destroy`, `logs`, hidden `serve` |
+| `src/openshell_tg/logsetup.py` | Log file, line format, rotation and removal of secrets from log lines |
 | `src/openshell_tg/diagnose.py` | Turns an `openshell` failure into a cause, a next step and the last lines of the error |
 | `src/openshell_tg/project.py` | `openshell-tg.yaml`: load, validate, secret check, create |
-| `src/openshell_tg/host.py` | KVM, OpenShell install, gateway config, Telegram setup, service install |
+| `src/openshell_tg/host.py` | KVM, memory and disk check, OpenShell install, gateway config, Telegram setup, service install |
 | `src/openshell_tg/osh.py` | The only module that runs `openshell`; parses `rule get` text |
-| `src/openshell_tg/sandbox.py` | Create, start, code in, attach, pull, destroy |
-| `src/openshell_tg/approval.py` | Poll, cards, approve, reject, expire, reconcile, revoke |
-| `src/openshell_tg/bot.py` | Telegram loop, commands, buttons, reminders, idle stop, reboot notice |
+| `src/openshell_tg/sandbox.py` | Create, start, code in, attach, pull, destroy; read and type into the agent's terminal |
+| `src/openshell_tg/approval.py` | Poll, cards, approve, reject, expire, reconcile, revoke, tell the agent the decision |
+| `src/openshell_tg/bot.py` | Telegram loop, commands, buttons, reminders, idle stop, reboot notice, quiet-agent notice |
 | `src/openshell_tg/telegram.py` | Bot API client (standard library) |
 | `src/openshell_tg/store.py` | SQLite |
 | `src/openshell_tg/messages.py` | All user-facing text, English and Vietnamese |
@@ -378,7 +387,6 @@ Dependencies: Python 3.11+, PyYAML. Tests mock the `openshell` binary with a fak
 4. `codex resume --last`, `claude --continue`, `opencode --continue` work in tmux inside the VM.
 5. `rule get` output parser matches v0.1.4 output for an agent proposal and a mechanistic draft.
 6. Profile `binaries` match the image (Codex, Claude Code and OpenCode reach their endpoints; curl does not).
-
-## Agent questions (`/screen`)
-
-An agent may stop to ask the Founder a question. OpenShell has no event for this, so the service watches the terminal: every 30 s it reads the age of the last output in the agent's tmux window (`window_activity`). When a window that was working (output within 30 s) has then been quiet for 2 minutes, and no request card is open for that sandbox, the bot sends one notice with the sandbox name. The notice repeats only after the agent has worked again. The notice carries no terminal text. `/screen` sends the last 15 lines of the window (up to 3000 characters) in a pre-formatted block, with a warning that the text is visible to the chat; it is sent only on request because the terminal may show secrets.
+7. After Approve, the line typed into the agent's tmux window reaches Claude Code and the retry succeeds (verified once with `curl` after the 6 s delay; verify again for Codex and OpenCode).
+8. `window_activity` reflects output in tmux 3.4 inside the VM, so the quiet-agent notice (section 7.5) fires after 2 minutes and not while the agent is working.
+9. `claude --continue` falls back to a new conversation when the last one is still running in the background (`otg-agent`).

@@ -4,6 +4,7 @@ Telegram bot and the approval service. Every step skips what already exists."""
 from __future__ import annotations
 
 import getpass
+import logging
 import os
 import pwd
 import secrets
@@ -19,6 +20,8 @@ import yaml
 from . import messages as m
 from . import osh
 from .telegram import Telegram, TelegramError
+
+log = logging.getLogger(__name__)
 
 OPENSHELL_VERSION = "v0.1.4"
 INSTALLER = f"https://raw.githubusercontent.com/NVIDIA/OpenShell/{OPENSHELL_VERSION}/install.sh"
@@ -160,12 +163,14 @@ def ensure_gateway(image: str, say) -> None:
         osh.run(["gateway", "add", GATEWAY_URL, "--local", "--name", "openshell"])
     if not _gateway_connected():
         say(m.t("gateway_starting"))
+        log.info("gateway: not connected, restarting the user service")
         _restart_gateway()
     if "vm" in osh.compute_drivers():
         return
     if GATEWAY_TOML.exists():
         raise SetupError(m.t("gateway_not_vm", file=GATEWAY_TOML))
     say(m.t("gateway_vm"))
+    log.info("gateway: writing %s (vm driver, image %s)", GATEWAY_TOML, image)
     GATEWAY_TOML.parent.mkdir(parents=True, exist_ok=True)
     GATEWAY_TOML.write_text(gateway_toml(image))
     if shutil.which("openshell-gateway"):

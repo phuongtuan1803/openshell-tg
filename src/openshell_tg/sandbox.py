@@ -115,6 +115,8 @@ def create(project: Project, providers: list[str], say, confirm) -> None:
         raise SandboxError(m.t("cancelled"))
 
     say(m.t("up_creating"))
+    log.info("create: sandbox=%s image=%s providers=%s", project.sandbox,
+             IMAGE, ",".join(providers) or "-")
     try:
         osh.create(
             project.sandbox,
@@ -141,6 +143,7 @@ def create(project: Project, providers: list[str], say, confirm) -> None:
             pass
         raise
 
+    log.info("create: sandbox=%s created, copying the project", project.sandbox)
     _restore(project)
 
 
@@ -183,6 +186,7 @@ def ensure_running(project: Project, providers: list[str], say, confirm) -> bool
         return True
     if phase != "Ready":
         say(m.t("up_starting"))
+        log.info("start: sandbox=%s phase=%s", project.sandbox, phase)
         try:
             osh.start(project.sandbox)
         except osh.OpenShellError:
@@ -305,4 +309,5 @@ def unsaved_commits(name: str, folder: Path) -> int | None:
 
 
 def destroy(name: str) -> None:
+    log.info("destroy: sandbox=%s", name)
     osh.delete(name)
