@@ -36,6 +36,8 @@ EN = {
     "provider_saved": "{provider} key saved in OpenShell's encrypted store.",
     "unknown_provider": "No provider profile named {names}. Check the providers list in openshell-tg.yaml.",
     # terminal: host
+    "low_memory": "Not enough free memory to start the sandbox: {have} GB free, {need} GB needed. Close other programs, or stop other sandboxes (/list in Telegram), then run openshell-tg up again. To use less, lower mem_mib in ~/.config/openshell/gateway.toml.",
+    "low_disk": "Not enough free disk space for the sandbox: {have} GB free, {need} GB needed. Free some space (empty the trash, delete old downloads), then run openshell-tg up again.",
     "no_kvm": "This machine cannot run virtual machines. Turn on virtualization (VT-x or AMD-V) in the BIOS, then run openshell-tg up again.",
     "kvm_no_access": "Your user cannot use virtualization yet. Run: sudo usermod -aG kvm {user} , log out and back in, then run openshell-tg up again.",
     "install_openshell": "OpenShell {version} is not installed. Install it now?",
@@ -214,6 +216,8 @@ VI = {
     "ask_credential": "{provider}: dán {what} (không hiện ra, OpenShell lưu mã hóa):",
     "provider_saved": "Đã lưu khóa {provider} vào kho mã hóa của OpenShell.",
     "unknown_provider": "Không có provider profile tên {names}. Kiểm tra danh sách providers trong openshell-tg.yaml.",
+    "low_memory": "Không đủ RAM trống để bật sandbox: còn {have} GB, cần {need} GB. Hãy đóng bớt chương trình, hoặc tắt sandbox khác (gõ /list trong Telegram), rồi chạy lại openshell-tg up. Muốn dùng ít hơn, giảm mem_mib trong ~/.config/openshell/gateway.toml.",
+    "low_disk": "Ổ đĩa không đủ chỗ cho sandbox: còn {have} GB, cần {need} GB. Hãy giải phóng dung lượng (dọn thùng rác, xóa tệp tải về cũ) rồi chạy lại openshell-tg up.",
     "no_kvm": "Máy này chưa chạy được máy ảo. Bật ảo hóa (VT-x hoặc AMD-V) trong BIOS rồi chạy lại openshell-tg up.",
     "kvm_no_access": "Tài khoản của bạn chưa dùng được ảo hóa. Chạy: sudo usermod -aG kvm {user} , đăng xuất rồi đăng nhập lại, sau đó chạy lại openshell-tg up.",
     "install_openshell": "Chưa cài OpenShell {version}. Cài ngay bây giờ?",

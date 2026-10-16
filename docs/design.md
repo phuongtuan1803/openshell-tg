@@ -319,6 +319,8 @@ The CLI and the service both open the database (WAL mode). Losing it loses only 
 
 | Situation | User sees | Behaviour |
 | --- | --- | --- |
+| Low memory | "Not enough free memory to start the sandbox: X GB free, Y GB needed. Close other programs or stop other sandboxes." Needed = `mem_mib` from `gateway.toml` + 1 GiB. Checked only when the sandbox is not already Ready | Stop |
+| Low disk | "Not enough free disk space for the sandbox: X GB free, 10 GB needed." Checked on the OpenShell data folder | Stop |
 | No KVM | "This machine cannot run virtual machines. Turn on virtualization (VT-x / AMD-V) in the BIOS, then run up again." | Stop |
 | OpenShell missing | "OpenShell is not installed. Install it now? [Y/n]" | Runs the official installer |
 | Gateway not connected | "OpenShell is not running. Starting it…" | `systemctl --user restart openshell-gateway`, then retry once |

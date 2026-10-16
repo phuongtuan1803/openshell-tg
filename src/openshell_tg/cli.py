@@ -165,6 +165,8 @@ def cmd_up(args) -> int:
 
     # Register first, so the approval service polls the sandbox even if a later step fails.
     store.save_sandbox(proj.sandbox, str(proj.folder), proj.agent, proj.idle_stop)
+    if sb.state(proj.sandbox) != "Ready":
+        host.check_resources()
     created = sb.ensure_running(proj, providers, say, ask)
     if created or store.get(f"policy:{proj.sandbox}") is None:
         store.put(f"policy:{proj.sandbox}", _policy_hash(proj))

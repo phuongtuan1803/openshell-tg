@@ -9,6 +9,7 @@ def wired(tmp_path, monkeypatch):
     calls = []
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(host, "check_kvm", lambda: calls.append("kvm"))
+    monkeypatch.setattr(host, "check_resources", lambda: calls.append("resources"))
     monkeypatch.setattr(host, "ensure_openshell", lambda ask: calls.append("openshell"))
     monkeypatch.setattr(host, "ensure_gateway", lambda image, say: calls.append("gateway"))
     monkeypatch.setattr(host, "setup_telegram", lambda *a: calls.append("telegram"))
@@ -32,7 +33,7 @@ def test_up_first_run(wired, tmp_path, monkeypatch):
     assert wired == ["kvm", "openshell", "gateway", "telegram", "advisor",
                      "import:claude-code", "provider:claude-code:['ANTHROPIC_API_KEY']",
                      "import:github", "provider:github:['GITHUB_TOKEN']",
-                     "sandbox:['claude-code', 'github']", "attach"]
+                     "resources", "sandbox:['claude-code', 'github']", "attach"]
 
 
 def test_up_stops_on_config_error(wired, tmp_path, capsys):

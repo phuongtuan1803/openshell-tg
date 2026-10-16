@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -60,6 +61,40 @@ def check_kvm() -> None:
         raise SetupError(m.t("kvm_no_access", user=getpass.getuser()))
 
 
+MIN_FREE_DISK_GIB = 10
+MEM_HEADROOM_MIB = 1024
+
+
+def _mem_available_mib() -> int | None:
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _vm_mem_mib() -> int:
+    try:
+        cfg = tomllib.loads((Path.home() / ".config/openshell/gateway.toml").read_text())
+        return int(cfg["openshell"]["drivers"]["vm"]["mem_mib"])
+    except (OSError, KeyError, ValueError, TypeError, tomllib.TOMLDecodeError):
+        return 8192
+
+
+def check_resources() -> None:
+    """Stop before creating a VM the machine cannot hold: free RAM and free disk."""
+    need = _vm_mem_mib()
+    have = _mem_available_mib()
+    if have is not None and have < need + MEM_HEADROOM_MIB:
+        raise SetupError(m.t("low_memory", have=f"{have / 1024:.1f}", need=f"{(need + MEM_HEADROOM_MIB) / 1024:.1f}"))
+    base = Path.home() / ".local/share"
+    free = shutil.disk_usage(base if base.exists() else Path.home()).free / 2**30
+    if free < MIN_FREE_DISK_GIB:
+        raise SetupError(m.t("low_disk", have=f"{free:.1f}", need=str(MIN_FREE_DISK_GIB)))
+
+
 def ensure_openshell(ask) -> None:
     if osh.installed():
         return
@@ -91,6 +126,7 @@ def diagnostics(journal_lines: int = 60) -> str:
     parts = []
     for title, cmd in (
         ("memory", ["free", "-m"]),
+        ("disk", ["df", "-h", str(Path.home())]),
         ("vm processes", ["sh", "-c", "ps -eo pid,rss,etime,args | grep -iE 'qemu|crosvm|firecracker|libkrun|cloud-hypervisor|openshell' | grep -v grep | cut -c1-200"]),
         ("gateway journal", ["journalctl", "--user", "-u", "openshell-gateway", "-n", str(journal_lines), "--no-pager", "-o", "cat"]),
     ):

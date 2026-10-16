@@ -185,6 +185,8 @@ openshell-tg up
 
 | Message | Do this |
 | --- | --- |
+| `Not enough free memory to start the sandbox…` | Close other programs or stop other sandboxes, then run `openshell-tg up` again. To use less, lower `mem_mib` in `~/.config/openshell/gateway.toml` |
+| `Not enough free disk space for the sandbox…` | Free at least 10 GB (empty the trash, delete old downloads), then run `openshell-tg up` again |
 | `This machine cannot run virtual machines…` | Turn on VT-x or AMD-V in the BIOS, then run `openshell-tg up` again |
 | `Your user cannot use virtualization yet…` | Run the `sudo usermod` command shown, log out and back in, run `openshell-tg up` again |
 | `OpenShell is set up for containers, not virtual machines…` | OpenShell was configured before. Open the file named in the message, set `compute_driver = "vm"`, run `openshell-tg up` again |
