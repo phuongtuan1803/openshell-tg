@@ -174,7 +174,7 @@ class Approvals:
         for r in group:
             try:
                 if approve:
-                    osh.approve(r.sandbox, r.chunk_id)
+                    self._approve(r)
                 else:
                     osh.reject(r.sandbox, r.chunk_id, reason or "")
             except osh.OpenShellError as exc:
@@ -188,6 +188,27 @@ class Approvals:
             return False
         self._edit(req, closed_card(req, status, reason), None)
         return True
+
+    def _approve(self, req: Request) -> None:
+        """Approve; if OpenShell re-evaluated the proposal meanwhile, review it again and retry once."""
+        try:
+            osh.approve(req.sandbox, req.chunk_id)
+        except osh.OpenShellError as exc:
+            if "inputs changed" not in exc.stderr or not self._unchanged(req):
+                raise
+            osh.approve(req.sandbox, req.chunk_id)
+
+    def _unchanged(self, req: Request) -> bool:
+        """Re-read one proposal; it must still be pending, trusted, low risk and as the card showed it."""
+        try:
+            chunk = {c.id: c for c in osh.rules(req.sandbox, "pending")}.get(req.chunk_id)
+        except osh.OpenShellError:
+            return False
+        shown = _detail(req)
+        return (chunk is not None and not chunk.risky
+                and chunk.shown() == {"rule": shown.get("rule"), "endpoints": shown.get("endpoints"),
+                                      "grants": shown.get("binaries") or shown.get("binary"),
+                                      "binary": shown.get("binary")})
 
     def _close(self, req: Request, status: str) -> None:
         self.store.close_request(req.sandbox, req.chunk_id, status)

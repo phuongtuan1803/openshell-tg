@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import json
+import logging
 import shlex
 import subprocess
 import tempfile
@@ -13,6 +15,8 @@ from pathlib import Path
 from . import __version__, osh
 from . import messages as m
 from .project import Project
+
+log = logging.getLogger(__name__)
 
 IMAGE = os.environ.get("OPENSHELL_TG_IMAGE", f"ghcr.io/phuongtuan1803/openshell-tg-agent:{__version__}")
 WORKDIR = "/sandbox/workspace"
@@ -122,6 +126,11 @@ def create(project: Project, providers: list[str], say, confirm) -> None:
         )
     except osh.OpenShellError:
         # A failed create can leave a half-built sandbox that blocks the next try.
+        # Keep its state in the log first: it says why startup did not finish.
+        try:
+            log.error("sandbox state after the failed create: %s", json.dumps(osh.sandbox(project.sandbox))[:6000])
+        except (osh.OpenShellError, TypeError, ValueError):
+            pass
         try:
             osh.delete(project.sandbox)
         except osh.OpenShellError:

@@ -190,3 +190,37 @@ def test_unsent_card_is_retried_and_still_expires(store, tg, gateway, monkeypatc
     store.db.execute("UPDATE requests SET t0=t0-?, message_id=NULL", (approval.EXPIRY + 5,))
     a.poll("sb")
     assert store.request("sb", "c1").status == "expired"
+
+
+def test_approve_is_retried_once_when_openshell_reevaluated(store, tg, gateway, monkeypatch):
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+    real = osh.approve
+    attempts = []
+
+    def flaky(name, cid):
+        attempts.append(cid)
+        if len(attempts) == 1:
+            raise osh.OpenShellError(["rule", "approve"], 1, "proposal inputs changed; evaluation refreshed, refetch and review again")
+        real(name, cid)
+
+    monkeypatch.setattr(osh, "approve", flaky)
+    assert a.on_button(f"ok:{store.request('sb', 'c1').id}") is None
+    assert attempts == ["c1", "c1"] and store.request("sb", "c1").status == "approved"
+
+
+def test_no_retry_when_the_reevaluated_proposal_became_risky(store, tg, gateway, monkeypatch):
+    gateway["pending"] = [chunk("c1")]
+    a = Approvals(store, tg, 1)
+    a.poll("sb")
+    attempts = []
+
+    def changed(name, cid):
+        attempts.append(cid)
+        gateway["pending"] = [chunk("c1", security="now flagged")]
+        raise osh.OpenShellError(["rule", "approve"], 1, "proposal inputs changed; refetch and review again")
+
+    monkeypatch.setattr(osh, "approve", changed)
+    assert a.on_button(f"ok:{store.request('sb', 'c1').id}") is not None
+    assert attempts == ["c1"] and store.request("sb", "c1").status == "pending"

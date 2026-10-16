@@ -17,6 +17,7 @@ def err(text, code=1, args=("sandbox", "create", "--name")):
 @pytest.mark.parametrize("text,code,expected", [
     (IMAGE_DENIED, 1, "image_denied"),
     ("manifest unknown", 1, "image_missing"),
+    ("ProvisioningTimedOut: Provisioning repair window expired after 300 seconds", 1, "provisioning"),
     ("transport error: tcp connect error: Connection refused", 1, "gateway_down"),
     ("timed out after 600 s", 124, "timeout"),
     ("write failed: No space left on device", 1, "disk_full"),

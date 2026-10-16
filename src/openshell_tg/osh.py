@@ -113,13 +113,11 @@ def import_profile(path: str, profile_id: str) -> None:
     An update must carry the stored profile's resource_version, so the current
     one is exported first and copied into a temporary copy of the file.
     """
-    try:
-        run(["profile", "import", "-f", path])
-    except OpenShellError as exc:
-        if "already exists" not in exc.stderr:
-            raise
-    else:
+    imported = run(["profile", "import", "-f", path], check=False)
+    if imported.returncode == 0:
         return
+    if "already exists" not in imported.stderr:
+        raise OpenShellError(["profile", "import"], imported.returncode, imported.stderr)
     version = run_json(["profile", "export", profile_id], timeout=60).get("resource_version")
     if not version:
         raise OpenShellError(["profile", "export", profile_id], 0, "no resource_version in exported profile")

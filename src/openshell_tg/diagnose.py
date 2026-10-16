@@ -12,6 +12,7 @@ CAUSES = (
     ("image_denied", re.compile(r"authenticat\w+ (?:failure|failed)|requested access to the resource is denied|unauthorized.*regist")),
     ("image_missing", re.compile(r"manifest unknown|image .*not found|name unknown")),
     ("gateway_down", re.compile(r"connection refused|transport error|tcp connect error|error trying to connect|dns error")),
+    ("provisioning", re.compile(r"provisioningtimedout|repair window expired")),
     ("timeout", re.compile(r"timed out")),
     ("disk_full", re.compile(r"no space left")),
     ("kvm", re.compile(r"/dev/kvm|kvm.*permission|permission denied.*kvm")),

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 import yaml
 from openshell_tg import osh
 
@@ -123,7 +124,7 @@ def test_import_profile_updates_existing(tmp_path, monkeypatch):
     def fake_run(args, **kw):
         calls.append(args)
         if args[1] == "import":
-            raise osh.OpenShellError(args, 1, "custom provider profile 'github' already exists")
+            return SimpleNamespace(returncode=1, stderr="custom provider profile 'github' already exists")
         if args[1] == "update":
             sent = yaml.safe_load(open(args[4]))
             assert sent == {"id": "github", "display_name": "GitHub", "resource_version": 7}
