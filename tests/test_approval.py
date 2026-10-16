@@ -239,13 +239,27 @@ def _tap_approve(store, tg, gateway):
     return a
 
 
-def test_approval_tells_the_agent_at_once_with_rule_details(store, tg, gateway):
+def test_approval_tells_the_agent_after_a_short_delay(store, tg, gateway, monkeypatch):
+    monkeypatch.setattr(approval, "NUDGE_DELAY", 0)
     gateway["running"] = True
-    _tap_approve(store, tg, gateway)
+    a = _tap_approve(store, tg, gateway)
+    assert gateway["told"] == []
+    assert "in a few seconds" in tg.edits[-1][1]
+    a.poll("sb")
     assert len(gateway["told"]) == 1
     text = gateway["told"][0]
     assert "allow_pypi" in text and "pypi.org:443" in text and "/usr/bin/python3" in text
-    assert "The agent was told" in tg.edits[-1][1]
+    assert "retry" in text.lower()
+    a.poll("sb")
+    assert len(gateway["told"]) == 1
+
+
+def test_approval_waits_for_the_delay(store, tg, gateway, monkeypatch):
+    monkeypatch.setattr(approval, "NUDGE_DELAY", 3600)
+    gateway["running"] = True
+    a = _tap_approve(store, tg, gateway)
+    a.poll("sb")
+    assert gateway["told"] == []
 
 
 def test_stopped_agent_gets_a_note_instead(store, tg, gateway, monkeypatch):
@@ -254,7 +268,7 @@ def test_stopped_agent_gets_a_note_instead(store, tg, gateway, monkeypatch):
     assert "not running" in tg.edits[-1][1]
 
 
-def test_rejection_never_tells_the_agent(store, tg, gateway):
+def test_rejection_tells_the_agent_the_reason_at_once(store, tg, gateway):
     gateway["running"] = True
     gateway["pending"] = [chunk("c1")]
     a = Approvals(store, tg, 1)
@@ -262,4 +276,7 @@ def test_rejection_never_tells_the_agent(store, tg, gateway):
     rid = store.open_requests()[0].id
     a.on_button(f"no:{rid}")
     a.on_button(f"why:{rid}:0")
-    assert gateway["told"] == []
+    assert len(gateway["told"]) == 1
+    text = gateway["told"][0]
+    assert "rejected" in text and "pypi.org:443" in text and "Do not repeat" in text
+    assert approval.m.t("reason_broad", lang="en") in text

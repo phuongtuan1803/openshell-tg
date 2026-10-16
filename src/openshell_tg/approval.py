@@ -27,6 +27,7 @@ from .telegram import Telegram, TelegramError
 log = logging.getLogger(__name__)
 
 EXPIRY = 30 * 60
+NUDGE_DELAY = 6  # seconds between an approval and telling the agent: the sandbox needs time to load the rule
 REASONS = ("reason_broad", "reason_unneeded", "reason_forbidden")
 
 
@@ -102,6 +103,7 @@ class Approvals:
     # polling
 
     def poll(self, sandbox: str, agent: str = "") -> None:
+        self._flush_nudge(sandbox)
         try:
             pending = osh.rules(sandbox, "pending")
         except osh.OpenShellError as exc:
@@ -174,7 +176,7 @@ class Approvals:
         group = self.store.group(req) if not req.risky else []
         group = group or ([req] if self.store.request_by_id(req.id).status == "pending" else [])
         failed = 0
-        approved: list[Request] = []
+        decided: list[Request] = []
         for r in group:
             try:
                 if approve:
@@ -186,10 +188,10 @@ class Approvals:
                 failed += 1
                 continue
             self.store.close_request(r.sandbox, r.chunk_id, status, reason, tapped=tapped)
+            decided.append(r)
             if approve:
                 self.store.mark_loaded(r.sandbox, r.chunk_id)
-                approved.append(r)
-        note = self._nudge(req.sandbox, approved) if approved and tapped else None
+        note = self._nudge(req.sandbox, decided, approve, reason) if decided and tapped else None
         if failed:
             return False
         self._edit(req, closed_card(req, status, reason, note), None)
@@ -197,16 +199,33 @@ class Approvals:
 
     # telling the agent to continue
 
-    def _nudge(self, sandbox: str, approved: list[Request]) -> str | None:
-        """Tell the agent at once which rules were approved so it carries on."""
+    def _nudge(self, sandbox: str, decided: list[Request], approve: bool, reason: str | None) -> str:
+        """Tell the agent what the owner decided. An approval waits a few seconds for the rule to load."""
+        if not sb.agent_running(sandbox):
+            return m.t("agent_not_running")
         rules = []
-        for r in approved:
+        for r in decided:
             d = _detail(r)
             rules.append(m.t("nudge_rule", lang="en", rule=d.get("rule") or "?", endpoints=d.get("endpoints") or "?",
                              programs=d.get("binaries") or d.get("binary") or "?"))
-        if sb.tell_agent(sandbox, m.t("nudge", lang="en", rules=" | ".join(rules))):
-            return m.t("agent_told")
-        return m.t("agent_not_running")
+        line = m.t("nudge" if approve else "nudge_rejected", lang="en", rules=" | ".join(rules), reason=reason or "")
+        if not approve:
+            return m.t("agent_told") if sb.tell_agent(sandbox, line) else m.t("agent_not_running")
+        key = f"nudge:{sandbox}"
+        lines = json.loads(self.store.get(key) or "{}").get("lines", [])
+        self.store.put(key, json.dumps({"lines": lines + [line], "due": time.time() + NUDGE_DELAY}))
+        return m.t("agent_will_be_told")
+
+    def _flush_nudge(self, sandbox: str) -> None:
+        raw = self.store.get(f"nudge:{sandbox}")
+        if not raw:
+            return
+        pending = json.loads(raw)
+        if time.time() < pending["due"]:
+            return
+        self.store.put(f"nudge:{sandbox}", "")
+        if not sb.tell_agent(sandbox, " ".join(pending["lines"])):
+            log.warning("could not tell the agent in %s about the approval", sandbox)
 
     def _approve(self, req: Request) -> None:
         """Approve; if OpenShell re-evaluated the proposal meanwhile, review it again and retry once."""
