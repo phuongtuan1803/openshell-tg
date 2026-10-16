@@ -199,8 +199,6 @@ class Approvals:
 
     def _nudge(self, sandbox: str, approved: list[Request]) -> str | None:
         """Tell the agent at once which rules were approved so it carries on."""
-        if not sb.agent_running(sandbox):
-            return None
         rules = []
         for r in approved:
             d = _detail(r)
@@ -208,7 +206,7 @@ class Approvals:
                              programs=d.get("binaries") or d.get("binary") or "?"))
         if sb.tell_agent(sandbox, m.t("nudge", lang="en", rules=" | ".join(rules))):
             return m.t("agent_told")
-        return None
+        return m.t("agent_not_running")
 
     def _approve(self, req: Request) -> None:
         """Approve; if OpenShell re-evaluated the proposal meanwhile, review it again and retry once."""

@@ -248,10 +248,10 @@ def test_approval_tells_the_agent_at_once_with_rule_details(store, tg, gateway):
     assert "The agent was told" in tg.edits[-1][1]
 
 
-def test_stopped_agent_is_not_told(store, tg, gateway):
+def test_stopped_agent_gets_a_note_instead(store, tg, gateway, monkeypatch):
+    monkeypatch.setattr(sb, "tell_agent", lambda name, text: False)
     _tap_approve(store, tg, gateway)
-    assert gateway["told"] == []
-    assert "agent" not in tg.edits[-1][1].lower()
+    assert "not running" in tg.edits[-1][1]
 
 
 def test_rejection_never_tells_the_agent(store, tg, gateway):
