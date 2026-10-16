@@ -31,6 +31,41 @@ network_policies:
         protocol: rest
         access: read-write
         enforcement: enforce
+      - host: api.github.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: github.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: raw.githubusercontent.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: registry.npmjs.org
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: downloads.claude.ai
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: mcp-proxy.anthropic.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
+      - host: http-intake.logs.us5.datadoghq.com
+        port: 443
+        protocol: rest
+        access: read-write
+        enforcement: enforce
     binaries:
       - path: /usr/bin/claude
       - path: /usr/lib/node_modules/@anthropic-ai/**
