@@ -5,6 +5,9 @@ set -eu
 agent="${1:?usage: otg-agent codex|claude|opencode}"
 cd /sandbox/workspace
 
+# Accented text needs a UTF-8 locale; the exec session may not carry the image setting.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 # Personal instructions for each agent (read in addition to the project's own).
 # The copy carries a marker line; a copy with the marker is ours and is refreshed
 # on every start, a file without it was written by the user and is left alone.
@@ -18,7 +21,7 @@ for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/
 done
 
 if tmux has-session -t agent 2>/dev/null; then
-  exec tmux attach-session -t agent
+  exec tmux -u attach-session -t agent
 fi
 
 has_history() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
@@ -36,4 +39,4 @@ case "$agent" in
     echo "Unknown agent: $agent" >&2; exit 2 ;;
 esac
 
-exec tmux new-session -s agent "$cmd"
+exec tmux -u new-session -s agent "$cmd"

@@ -2,6 +2,9 @@
 # openshell-tg release, so every sandbox of one release behaves the same.
 FROM ubuntu:24.04
 
+# UTF-8 so tmux and the agents handle accented text (Vietnamese) correctly.
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 ARG NODE_MAJOR=22
 ARG CODEX_VERSION=0.162.1
 ARG CLAUDE_CODE_VERSION=2.1.300
@@ -23,5 +26,5 @@ COPY otg-agent /usr/local/bin/otg-agent
 COPY AGENTS.md /usr/share/openshell-tg/AGENTS.md
 RUN chmod 0755 /usr/local/bin/otg-agent
 
-# tmux: Ctrl-B D leaves the agent running; mouse scrolling on.
-RUN printf 'set -g mouse on\nset -g history-limit 50000\n' > /etc/tmux.conf
+# tmux: Ctrl-B D leaves the agent running; mouse scrolling on; true colour; no key delay.
+RUN printf 'set -g mouse on\nset -g history-limit 50000\nset -sg escape-time 10\nset -ga terminal-overrides ",xterm-256color:Tc"\n' > /etc/tmux.conf
