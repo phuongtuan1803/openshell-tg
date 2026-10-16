@@ -242,7 +242,7 @@ sequenceDiagram
 - Expiry: 30 minutes after the proposal was first seen (T0), even if the card could not be sent, the service runs `openshell rule reject --reason "No answer within 30 minutes"`. Unsent cards are retried on every poll.
 - Duplicates: same sandbox, rule, endpoints and programs while a low-risk card is open: no new card, the open card shows "×N". Risky or untrusted chunks always get their own card.
 - Reject reasons (buttons): "Too broad, ask for something narrower", "Not needed for this task", "This service is not allowed". The reason goes to the agent through `--reason`.
-- Revoke: `/rules` lists the rules in the active policy (`openshell policy get NAME --full -o json`) with a Remove button, which runs `openshell policy update NAME --remove-rule RULE --wait`.
+- Revoke: `/rules` lists the rules in the active policy (`openshell policy get NAME --full -o json`) as a numbered list, 8 per page (◀ ▶ to turn pages). Tapping `Remove N` asks for confirmation on the same message; confirming runs `openshell policy update NAME --remove-rule RULE --wait` and redraws the list from the policy as it is then.
 - Only messages and button presses from the configured chat and user id are accepted; everything else is ignored.
 
 ## 7. Telegram interface
@@ -254,7 +254,7 @@ sequenceDiagram
 | `/help` | What the bot does, the four commands, when to approve |
 | `/list` | Every sandbox: running or stopped, last use, folder; Stop and Delete buttons |
 | `/status` | Machine and service up, pending requests (resends their cards), response times for 7 days |
-| `/rules [sandbox]` | Approved rules with a Remove button each |
+| `/rules [sandbox]` | Approved addresses, numbered, 8 per page, with `Remove N` buttons and a confirmation step |
 
 ### 7.2 Card
 

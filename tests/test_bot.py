@@ -41,32 +41,59 @@ def test_callback_from_stranger_ignored(bot, tg, store, monkeypatch):
     assert stopped == ["otg-a-1"]
 
 
-def test_rules_remove_button(bot, tg, store, monkeypatch):
+def _rules_bot(bot, store, monkeypatch, count):
     store.save_sandbox("otg-a-1", "/a", "codex", 3600)
-    monkeypatch.setattr(osh, "network_policies", lambda name: {
-        "allow_pypi": {"endpoints": [{"host": "pypi.org", "port": 443}]}})
+    policies = {f"allow_{i:02d}": {"endpoints": [{"host": f"site{i:02d}.example", "port": 443}]}
+                for i in range(1, count + 1)}
     removed = []
-    monkeypatch.setattr(osh, "remove_rule", lambda name, rule: removed.append((name, rule)))
-    bot.handle(message("/rules"))
-    data = tg.sent[0][2][0][0][1]
-    assert bot.on_button(data, None) == "Removed"
-    assert removed == [("otg-a-1", "allow_pypi")]
-    assert bot.on_button(data, None) == "Already handled"
 
+    def remove(name, rule):
+        removed.append((name, rule))
+        policies.pop(rule)
 
-def test_rules_list_is_redrawn_after_removal(bot, tg, store, monkeypatch):
-    store.save_sandbox("otg-a-1", "/a", "codex", 3600)
-    policies = {"allow_pypi": {"endpoints": [{"host": "pypi.org", "port": 443}]},
-                "allow_npm": {"endpoints": [{"host": "registry.npmjs.org", "port": 443}]}}
     monkeypatch.setattr(osh, "network_policies", lambda name: dict(policies))
-    monkeypatch.setattr(osh, "remove_rule", lambda name, rule: policies.pop(rule))
+    monkeypatch.setattr(osh, "remove_rule", remove)
+    return policies, removed
+
+
+def _find(buttons, label_part):
+    return next(data for row in buttons for label, data in row if label_part in label)
+
+
+def test_rules_remove_needs_confirmation(bot, tg, store, monkeypatch):
+    _, removed = _rules_bot(bot, store, monkeypatch, 3)
     bot.handle(message("/rules"))
-    first = next(data for row in tg.sent[0][2] for label, data in row if "pypi.org" in label)
-    assert "pypi.org" in tg.sent[0][1] and "registry.npmjs.org" in tg.sent[0][1]
-    assert bot.on_button(first, 77) == "Removed"
-    msg_id, text, buttons = tg.edits[-1]
-    assert msg_id == 77 and "pypi.org" not in text and "registry.npmjs.org" in text
-    assert len(buttons) == 1
+    text, buttons = tg.sent[0][1], tg.sent[0][2]
+    assert "1. <code>site01.example:443</code>" in text and "(3)" in text
+    first = _find(buttons, "1")
+    assert bot.on_button(first, 50) is None          # asks first
+    assert removed == []
+    msg_id, confirm_text, confirm_buttons = tg.edits[-1]
+    assert msg_id == 50 and "site01.example" in confirm_text
+    assert bot.on_button(_find(confirm_buttons, "Remove"), 50) == "Removed"
+    assert removed == [("otg-a-1", "allow_01")]
+    assert "site01.example" not in tg.edits[-1][1] and "site02.example" in tg.edits[-1][1]
+    assert bot.on_button(first, 50) == "Already handled"
+
+
+def test_rules_cancel_returns_to_list(bot, tg, store, monkeypatch):
+    _, removed = _rules_bot(bot, store, monkeypatch, 2)
+    bot.handle(message("/rules"))
+    bot.on_button(_find(tg.sent[0][2], "1"), 50)
+    bot.on_button(_find(tg.edits[-1][2], "Cancel"), 50)
+    assert removed == [] and "site01.example" in tg.edits[-1][1]
+
+
+def test_rules_are_paged(bot, tg, store, monkeypatch):
+    _rules_bot(bot, store, monkeypatch, 12)
+    bot.handle(message("/rules"))
+    text, buttons = tg.sent[0][1], tg.sent[0][2]
+    assert "Page 1 of 2" in text and "site08.example" in text and "site09.example" not in text
+    assert all(len(row) <= 4 for row in buttons)
+    assert max(int(label.split()[-1]) for row in buttons[:-1] for label, _ in row) == 8
+    bot.on_button(_find(buttons, "▶"), 50)
+    page2 = tg.edits[-1][1]
+    assert "Page 2 of 2" in page2 and "9. <code>site09.example" in page2 and "site08.example" not in page2
 
 
 def test_reboot_notice(bot, tg, store, monkeypatch):

@@ -161,7 +161,7 @@ Expires: 18:10
 | Leave the agent working in the background | Press `Ctrl-B`, release, then press `D` | `Left the agent. Run openshell-tg up here to come back.` |
 | See what is waiting for you | Telegram `/status`, or `openshell-tg status` in the folder | Pending requests and response times |
 | See all sandboxes | Telegram `/list`, or `openshell-tg list` | One line per sandbox with its state |
-| Remove an approved address | Telegram `/rules`, then **Remove** next to it | `Removed` |
+| Remove an approved address | Telegram `/rules`, tap **Remove N** for the number of the address, then **Remove** to confirm. Use ◀ ▶ for more pages | The address disappears from the list and the bot shows `Removed` |
 | Get the agent's work into your folder | `openshell-tg pull` in the folder | `otg/work: 3 commit(s) not in your current branch` |
 | Delete a sandbox you no longer need | `openshell-tg destroy` in the folder, or **Delete** in `/list` | `Sandbox … deleted.` |
 

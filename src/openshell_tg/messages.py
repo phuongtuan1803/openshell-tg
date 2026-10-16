@@ -122,7 +122,10 @@ EN = {
     "status": ("<b>Status</b>\nOpenShell: {gateway}\nWaiting for you: {pending}\n\n"
                "<b>Last 7 days</b>\nRequests: {total} ({approved} approved, {rejected} rejected, {expired} expired)\n"
                "Your response: median {median}, 90% within {p90}\nAgents waited in total: {waited}"),
-    "rules_title": "<b>Approved addresses · {sandbox}</b>",
+    "rules_title": "<b>Approved addresses · {sandbox}</b> ({count})",
+    "rules_page": "Page {page} of {pages}",
+    "rules_confirm": "Remove this address from <b>{sandbox}</b>?\n<code>{endpoints}</code> ({rule})\nThe agent will be blocked from it again.",
+    "btn_remove_yes": "Remove",
     "rules_empty": "{sandbox}: no approved addresses yet.",
     "rebooted": "The home machine restarted. The agent in <b>{sandbox}</b> stopped.\nRun <code>openshell-tg up</code> in <code>{folder}</code> to continue where it left off.",
     "expired_while_off": "{count} request(s) expired while the machine was off. The agents were told no.",
@@ -293,7 +296,10 @@ VI = {
     "status": ("<b>Trạng thái</b>\nOpenShell: {gateway}\nĐang chờ bạn: {pending}\n\n"
                "<b>7 ngày qua</b>\nYêu cầu: {total} ({approved} duyệt, {rejected} từ chối, {expired} hết hạn)\n"
                "Bạn phản hồi: trung vị {median}, 90% trong {p90}\nAgent chờ tổng cộng: {waited}"),
-    "rules_title": "<b>Địa chỉ đã duyệt · {sandbox}</b>",
+    "rules_title": "<b>Địa chỉ đã duyệt · {sandbox}</b> ({count})",
+    "rules_page": "Trang {page}/{pages}",
+    "rules_confirm": "Gỡ địa chỉ này khỏi <b>{sandbox}</b>?\n<code>{endpoints}</code> ({rule})\nAgent sẽ bị chặn truy cập địa chỉ này trở lại.",
+    "btn_remove_yes": "Gỡ",
     "rules_empty": "{sandbox}: chưa duyệt địa chỉ nào.",
     "rebooted": "Máy nhà vừa khởi động lại. Agent trong <b>{sandbox}</b> đã dừng.\nChạy <code>openshell-tg up</code> trong <code>{folder}</code> để làm tiếp.",
     "expired_while_off": "{count} yêu cầu hết hạn trong lúc máy tắt. Agent đã nhận câu trả lời là không.",

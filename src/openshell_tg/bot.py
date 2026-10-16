@@ -6,6 +6,7 @@ iteration long-polls Telegram briefly, then polls OpenShell for proposals.
 
 from __future__ import annotations
 
+import hashlib
 import html
 import logging
 import secrets
@@ -215,19 +216,92 @@ class Bot:
             text, buttons = self.rules_view(box.name)
             self.tg.send(self.chat_id, text, buttons)
 
-    def rules_view(self, name: str) -> tuple[str, list | None]:
-        """Text and Remove buttons for the addresses the sandbox's active policy allows."""
+    RULES_PER_PAGE = 8
+
+    @staticmethod
+    def _token(*parts: str) -> str:
+        return hashlib.sha1("\n".join(parts).encode()).hexdigest()[:8]
+
+    def rules_view(self, name: str, page: int = 0) -> tuple[str, list | None]:
+        """A numbered, paged list of the addresses the sandbox's active policy allows.
+
+        One tap on a number asks for confirmation; a second tap removes the address.
+        """
         rules = self.approvals.approved(name)
         if not rules:
             return m.t("rules_empty", sandbox=html.escape(name)), None
-        lines = [m.t("rules_title", sandbox=html.escape(name))]
-        buttons = []
-        for rule, endpoints in rules[:30]:
-            lines.append(f"• <code>{html.escape(endpoints[:200])}</code> ({html.escape(rule[:60])})")
-            token = secrets.token_hex(4)
-            self.store.put(f"rm:{token}", f"{name}\n{rule}")
-            buttons.append([(m.t("btn_remove") + " " + (endpoints or rule)[:40], f"rm:{token}")])
+        per = self.RULES_PER_PAGE
+        pages = (len(rules) + per - 1) // per
+        page = max(0, min(page, pages - 1))
+        shown = rules[page * per:(page + 1) * per]
+        view = self._token(name)
+        self.store.put(f"rv:{view}", name)
+        lines = [m.t("rules_title", sandbox=html.escape(name), count=len(rules))]
+        if pages > 1:
+            lines.append(m.t("rules_page", page=page + 1, pages=pages))
+        lines.append("")
+        row: list[tuple[str, str]] = []
+        buttons: list[list[tuple[str, str]]] = []
+        for i, (rule, endpoints) in enumerate(shown, start=page * per + 1):
+            lines.append(f"{i}. <code>{html.escape((endpoints or rule)[:70])}</code>")
+            token = self._token(name, rule)
+            self.store.put(f"rm:{token}", f"{name}\n{rule}\n{page}")
+            row.append((f"{m.t('btn_remove')} {i}", f"rm:{token}"))
+            if len(row) == 4:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+        if pages > 1:
+            nav = []
+            if page > 0:
+                nav.append(("◀", f"rl:{view}:{page - 1}"))
+            nav.append((f"{page + 1}/{pages}", f"rl:{view}:{page}"))
+            if page < pages - 1:
+                nav.append(("▶", f"rl:{view}:{page + 1}"))
+            buttons.append(nav)
         return "\n".join(lines), buttons
+
+    def _show_rules(self, message_id: int | None, name: str, page: int = 0) -> None:
+        if message_id is None:
+            return
+        text, buttons = self.rules_view(name, page)
+        try:
+            self.tg.edit(self.chat_id, message_id, text, buttons)
+        except TelegramError as exc:
+            log.warning("edit rules list failed: %s", exc)
+
+    def _rules_button(self, action: str, arg: str, message_id: int | None) -> str | None:
+        if action == "rl":
+            token, _, page = arg.partition(":")
+            name = self.store.get(f"rv:{token}")
+            if not name:
+                return m.t("toast_handled")
+            self._show_rules(message_id, name, int(page) if page.isdigit() else 0)
+            return None
+        value = self.store.get(f"rm:{arg}")
+        if not value:
+            return m.t("toast_handled")
+        name, rule, page = (value.split("\n") + ["0"])[:3]
+        page_no = int(page) if page.isdigit() else 0
+        if action == "rm":
+            endpoints = dict(self.approvals.approved(name)).get(rule)
+            if endpoints is None:
+                self._show_rules(message_id, name, page_no)
+                return m.t("toast_handled")
+            if message_id is not None:
+                text = m.t("rules_confirm", sandbox=html.escape(name), endpoints=html.escape(endpoints[:200]),
+                           rule=html.escape(rule[:60]))
+                buttons = [[(m.t("btn_remove_yes"), f"rmy:{arg}"),
+                            (m.t("btn_cancel"), f"rl:{self._token(name)}:{page_no}")]]
+                try:
+                    self.tg.edit(self.chat_id, message_id, text, buttons)
+                except TelegramError as exc:
+                    log.warning("edit rules confirm failed: %s", exc)
+            return None
+        ok = self.approvals.remove(name, rule)
+        self._show_rules(message_id, name, page_no)
+        return m.t("toast_removed") if ok else m.t("toast_failed")
 
     # buttons
 
@@ -235,21 +309,8 @@ class Bot:
         action, _, arg = data.partition(":")
         if action in ("ok", "no", "why", "back", "info"):
             return self.approvals.on_button(data)
-        if action == "rm":
-            value = self.store.get(f"rm:{arg}")
-            if not value:
-                return m.t("toast_handled")
-            name, rule = value.split("\n", 1)
-            ok = self.approvals.remove(name, rule)
-            self.store.db.execute("DELETE FROM meta WHERE key=?", (f"rm:{arg}",))
-            if ok and message_id is not None:
-                # Redraw the list from the policy as it is now, so the removed address disappears.
-                text, buttons = self.rules_view(name)
-                try:
-                    self.tg.edit(self.chat_id, message_id, text, buttons)
-                except TelegramError as exc:
-                    log.warning("edit rules list failed: %s", exc)
-            return m.t("toast_removed") if ok else m.t("toast_failed")
+        if action in ("rl", "rm", "rmy"):
+            return self._rules_button(action, arg, message_id)
         box = self.store.sandbox(arg)
         if box is None:
             return m.t("toast_handled")
